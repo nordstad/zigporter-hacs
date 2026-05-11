@@ -155,22 +155,28 @@ async def _fetch_z2m_topology(
     response_topic = f"{topic_prefix}/bridge/response/networkmap"
     request_topic = f"{topic_prefix}/bridge/request/networkmap"
 
+    import json  # noqa: PLC0415
+    import logging  # noqa: PLC0415
+
+    _LOGGER = logging.getLogger(__name__)
+
     future: asyncio.Future[dict[str, Any]] = hass.loop.create_future()
 
+    @callback
     def on_message(msg) -> None:
-        if not future.done():
-            import json  # noqa: PLC0415
-
-            try:
-                payload = json.loads(msg.payload)
-            except (json.JSONDecodeError, TypeError):
-                return
+        if future.done():
+            return
+        try:
+            payload = json.loads(msg.payload)
             future.set_result(payload)
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            _LOGGER.error("Failed to parse Z2M networkmap response: %s", exc)
 
     unsub = await mqtt.async_subscribe(hass, response_topic, on_message, qos=0)
 
     try:
         await mqtt.async_publish(hass, request_topic, '{"type":"raw","routes":true}', qos=0)
+        _LOGGER.debug("Published networkmap request to %s", request_topic)
         response = await asyncio.wait_for(future, timeout=SCAN_TIMEOUT)
     finally:
         unsub()
