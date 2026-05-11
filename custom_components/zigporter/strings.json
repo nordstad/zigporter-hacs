@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Zigporter Setup",
+        "description": "Configure the Zigbee backend for the network map.",
+        "data": {
+          "backend": "Zigbee backend",
+          "mqtt_topic": "MQTT topic prefix"
+        },
+        "data_description": {
+          "backend": "Select which Zigbee integration to use for topology data.",
+          "mqtt_topic": "MQTT topic prefix for Zigbee2MQTT (usually 'zigbee2mqtt')."
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Zigporter is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Zigporter Options",
+        "data": {
+          "warn_lqi": "Warning LQI threshold",
+          "critical_lqi": "Critical LQI threshold",
+          "cache_ttl": "Cache TTL (seconds)"
+        },
+        "data_description": {
+          "warn_lqi": "Links below this LQI are shown in yellow.",
+          "critical_lqi": "Links below this LQI are shown in red.",
+          "cache_ttl": "How long to cache the network map before re-scanning (0 = no cache)."
+        }
+      }
+    }
+  }
+}
