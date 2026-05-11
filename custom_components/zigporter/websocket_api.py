@@ -30,7 +30,7 @@ from .network_map import (
 )
 from .network_map_svg import render_svg
 
-SCAN_TIMEOUT = 30
+SCAN_TIMEOUT = 120
 
 
 @callback
