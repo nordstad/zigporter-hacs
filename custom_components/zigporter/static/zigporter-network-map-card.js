@@ -44,12 +44,12 @@ class ZigporterNetworkMapCard extends HTMLElement {
     const style = document.createElement("style");
     style.textContent = `
       :host { display: block; }
-      ha-card { overflow: visible; }
+      ha-card { overflow: hidden; }
       .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 0; }
       .header h2 { margin: 0; font-size: 16px; font-weight: 500; }
       .stats { padding: 0 16px; font-size: 12px; color: var(--secondary-text-color); }
-      .map-container { padding: 0; overflow-x: auto; overflow-y: visible; }
-      .map-container svg { width: 100%; height: auto; display: block; min-height: 600px; }
+      .map-container { padding: 0; }
+      .map-container svg { width: 100%; height: auto; display: block; max-height: calc(100vh - 120px); }
       .loading { padding: 24px; text-align: center; color: var(--secondary-text-color); }
       .error { padding: 16px; color: var(--error-color); }
       button { background: none; border: none; cursor: pointer; color: var(--primary-color); padding: 8px; font-size: 18px; }
@@ -119,7 +119,9 @@ class ZigporterNetworkMapCard extends HTMLElement {
 
       svgEl.removeAttribute("width");
       svgEl.removeAttribute("height");
+      svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
       svgEl.style.width = "100%";
+      svgEl.style.maxHeight = "calc(100vh - 120px)";
       svgEl.style.height = "auto";
 
       mapEl.textContent = "";
