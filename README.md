@@ -1,5 +1,7 @@
 # Zigporter — HACS Integration
 
+> **Early Development** — This integration is under active development and is not yet stable. Expect breaking changes, bugs, and incomplete features. Use at your own risk.
+
 Zigbee network topology map for Home Assistant. Visualize your mesh network with LQI signal quality indicators, routing paths, and device hierarchy.
 
 Supports both **Zigbee2MQTT** and **ZHA** backends.
