@@ -1,11 +1,18 @@
-"""SVG renderer for Zigbee network map — uses xml.etree.ElementTree (no svgwrite)."""
+"""SVG renderer for Zigbee network map — uses xml.etree.ElementTree (no svgwrite).
+
+Full port of the CLI radial layout with ring gradients, collision resolution,
+label pills, edge LQI labels, legend box, glow filters, and node type distinction.
+"""
+
+from __future__ import annotations
 
 import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any
 
-# Visual constants (match CLI output)
+# ── Visual constants ──────────────────────────────────────────────────────────
+
 MIN_RING_GAP = 200
 ANGULAR_PADDING = 50
 LABEL_OFFSET = 30
@@ -25,6 +32,7 @@ NODE_R_ROUTER = 20
 NODE_R_END = 14
 
 BG = "#0f172a"
+
 COORD_FILL = "#f59e0b"
 ROUTER_FILL = "#0ea5e9"
 END_FILL = "#475569"
@@ -38,6 +46,9 @@ EDGE_CRIT = "#ef4444"
 EDGE_OPACITY = 0.55
 
 LABEL_FS = "11px"
+DIM_FS = "11px"
+LEGEND_FS = "11px"
+
 COLLISION_GAP = 100
 COLLISION_ITERS = 200
 
@@ -45,17 +56,7 @@ MAX_LABEL_LEN = 22
 LABEL_ARC = MAX_LABEL_LEN * 6 + 10
 
 
-@dataclass
-class NodePosition:
-    """Computed position for a node in the radial layout."""
-
-    ieee: str
-    x: float
-    y: float
-    radius: float
-    depth: int
-    name: str
-    node_type: str
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 def _edge_color(lqi: int, warn: int, crit: int) -> str:
@@ -66,12 +67,40 @@ def _edge_color(lqi: int, warn: int, crit: int) -> str:
     return EDGE_GOOD
 
 
-def _node_radius(node_type: str) -> int:
-    if node_type == "Coordinator":
-        return NODE_R_COORD
-    if node_type == "Router":
-        return NODE_R_ROUTER
-    return NODE_R_END
+def _edge_width(lqi: int) -> float:
+    return round(0.8 + (lqi / 255) * 2.8, 2)
+
+
+def _lerp_color(t: float, near: str, far: str) -> str:
+    """Linearly interpolate between two hex colours. t=0 -> near, t=1 -> far."""
+    r1, g1, b1 = int(near[1:3], 16), int(near[3:5], 16), int(near[5:7], 16)
+    r2, g2, b2 = int(far[1:3], 16), int(far[3:5], 16), int(far[5:7], 16)
+    r = round(r1 + (r2 - r1) * t)
+    g = round(g1 + (g2 - g1) * t)
+    b = round(b1 + (b2 - b1) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _compute_ring_radii(
+    depth_map: dict[str, int], nodes: dict[str, dict[str, Any]]
+) -> dict[int, float]:
+    """Compute per-hop ring boundary radii so each ring has enough circumference."""
+    max_hops = max((d for d in depth_map.values()), default=1)
+    count_at_depth: dict[int, int] = {}
+    for ieee, depth in depth_map.items():
+        if depth > 0:
+            count_at_depth[depth] = count_at_depth.get(depth, 0) + 1
+
+    ring_radii: dict[int, float] = {}
+    prev_r = 0.0
+    for h in range(1, max_hops + 1):
+        n = count_at_depth.get(h, 1)
+        arc_per_device = max(2 * NODE_R_ROUTER + COLLISION_GAP, LABEL_ARC) + ANGULAR_PADDING
+        required_node_r = (n * arc_per_device) / (2 * math.pi)
+        min_for_content = 2 * required_node_r - prev_r + LABEL_OFFSET
+        ring_radii[h] = max(min_for_content, prev_r + MIN_RING_GAP)
+        prev_r = ring_radii[h]
+    return ring_radii
 
 
 def _node_fill(node_type: str) -> str:
@@ -82,114 +111,609 @@ def _node_fill(node_type: str) -> str:
     return END_FILL
 
 
-def _compute_ring_radii(depth_counts: dict[int, int]) -> list[float]:
-    """Compute ring boundary radii based on node counts per depth."""
-    if not depth_counts:
-        return []
-    max_depth = max(depth_counts.keys())
-    radii: list[float] = [0.0]
+def _node_radius(node_type: str) -> int:
+    if node_type == "Coordinator":
+        return NODE_R_COORD
+    if node_type == "Router":
+        return NODE_R_ROUTER
+    return NODE_R_END
 
-    for d in range(1, max_depth + 1):
-        n = depth_counts.get(d, 1)
-        arc_per_device = max(NODE_R_ROUTER * 2, LABEL_ARC) + ANGULAR_PADDING
-        required_r = n * arc_per_device / (2 * math.pi)
-        prev_r = radii[-1]
-        node_r = max(required_r, prev_r + MIN_RING_GAP / 2)
-        ring_r = max(2 * node_r - prev_r + LABEL_OFFSET, prev_r + MIN_RING_GAP)
-        radii.append(ring_r)
 
-    return radii
+# ── Angular layout ────────────────────────────────────────────────────────────
+
+
+def _subtree_weights(ieee: str, children: dict[str, list[str]]) -> dict[str, int]:
+    """Angular weight = max(ceil(sqrt(leaf_count)), subtree_depth)."""
+    weights: dict[str, int] = {}
+
+    def _calc(n: str) -> tuple[int, int]:
+        kids = children.get(n, [])
+        if not kids:
+            weights[n] = 1
+            return 1, 1
+        results = [_calc(k) for k in kids]
+        leaves = sum(lc for lc, _ in results)
+        depth = max(d for _, d in results) + 1
+        weights[n] = max(math.ceil(math.sqrt(leaves)), depth)
+        return leaves, depth
+
+    _calc(ieee)
+    return weights
+
+
+def _compute_path_min_lqi(
+    parent_map: dict[str, str | None],
+    lqi_map: dict[str, int],
+) -> dict[str, int]:
+    """Min LQI along the full chain from coordinator to each device."""
+    cache: dict[str, int] = {}
+
+    def _min(ieee: str) -> int:
+        if ieee in cache:
+            return cache[ieee]
+        path: list[str] = []
+        seen: set[str] = set()
+        cur: str | None = ieee
+        while cur is not None and cur not in cache and cur not in seen:
+            seen.add(cur)
+            path.append(cur)
+            cur = parent_map.get(cur)
+        base = cache[cur] if cur in cache else 255
+        for node in reversed(path):
+            if node in lqi_map:
+                base = min(lqi_map[node], base)
+            cache[node] = base
+        return cache.get(ieee, 0)
+
+    for ieee in parent_map:
+        _min(ieee)
+    return cache
 
 
 def _assign_angles(
-    nodes_at_depth: list[str],
-    parent_map: dict[str, str | None],
-    parent_angles: dict[str, float],
-) -> dict[str, float]:
-    """Assign angular positions to nodes, grouping children near parents."""
-    if not nodes_at_depth:
-        return {}
+    ieee: str,
+    children: dict[str, list[str]],
+    leaf_counts: dict[str, int],
+    angles: dict[str, float],
+    start: float,
+    end: float,
+    depth_map: dict[str, int],
+    nodes: dict[str, dict[str, Any]],
+    ring_radii: dict[int, float],
+) -> None:
+    """Recursively assign angular midpoints using leaf-count-proportional slices."""
+    angles[ieee] = (start + end) / 2
+    kids = children.get(ieee, [])
+    if not kids:
+        return
 
-    n = len(nodes_at_depth)
-    angle_step = 2 * math.pi / n
-    angles: dict[str, float] = {}
+    sorted_kids = sorted(kids, key=lambda k: -leaf_counts.get(k, 1))
+    total = sum(leaf_counts.get(k, 1) for k in sorted_kids)
+    span = end - start
 
-    sorted_nodes = sorted(
-        nodes_at_depth,
-        key=lambda ieee: parent_angles.get(parent_map.get(ieee, "") or "", 0),
+    child_depth = depth_map.get(ieee, 0) + 1
+    prev_r = ring_radii.get(child_depth - 1, 0.0)
+    curr_r = ring_radii.get(child_depth, prev_r + MIN_RING_GAP)
+    r_at_depth = max((prev_r + curr_r) / 2, 1.0)
+    min_angles = [
+        max(2 * _node_radius(nodes.get(k, {}).get("type", "EndDevice")) + COLLISION_GAP, LABEL_ARC)
+        / r_at_depth
+        for k in sorted_kids
+    ]
+
+    raw_spans = [span * leaf_counts.get(k, 1) / total for k in sorted_kids]
+    floored = [max(raw, mn) for raw, mn in zip(raw_spans, min_angles)]
+    floored_total = sum(floored)
+    if floored_total > span:
+        floored = [s * span / floored_total for s in floored]
+
+    cursor = start
+    for kid, kid_span in zip(sorted_kids, floored):
+        _assign_angles(
+            kid,
+            children,
+            leaf_counts,
+            angles,
+            cursor,
+            cursor + kid_span,
+            depth_map,
+            nodes,
+            ring_radii,
+        )
+        cursor += kid_span
+
+
+# ── Collision resolution ──────────────────────────────────────────────────────
+
+
+def _resolve_collisions(
+    positions: dict[str, tuple[float, float]],
+    angles: dict[str, float],
+    depth_map: dict[str, int],
+    nodes: dict[str, dict[str, Any]],
+    cx: float,
+    cy: float,
+    ring_radii: dict[int, float],
+) -> None:
+    """Push overlapping nodes apart by nudging their angles within their hop ring."""
+    by_depth: dict[int, list[str]] = {}
+    for ieee, depth in depth_map.items():
+        if depth > 0:
+            by_depth.setdefault(depth, []).append(ieee)
+
+    ring_r: dict[str, float] = {
+        ieee: (ring_radii.get(depth - 1, 0.0) + ring_radii.get(depth, depth * MIN_RING_GAP)) / 2
+        for ieee, depth in depth_map.items()
+        if depth > 0
+    }
+
+    for _ in range(COLLISION_ITERS):
+        moved = False
+        for depth_nodes in by_depth.values():
+            n = len(depth_nodes)
+            for i in range(n):
+                a = depth_nodes[i]
+                for j in range(i + 1, n):
+                    b = depth_nodes[j]
+                    ax, ay = positions[a]
+                    bx, by_ = positions[b]
+                    dist = math.hypot(ax - bx, ay - by_)
+                    ra = _node_radius(nodes[a].get("type", "EndDevice"))
+                    rb = _node_radius(nodes[b].get("type", "EndDevice"))
+                    min_dist = max(ra + rb + COLLISION_GAP, LABEL_ARC)
+                    if dist >= min_dist:
+                        continue
+                    moved = True
+                    r = (ring_r[a] + ring_r[b]) / 2
+                    angular_overlap = (min_dist - dist) / max(r, 1.0)
+                    diff = (angles[b] - angles[a] + math.pi) % (2 * math.pi) - math.pi
+                    nudge = angular_overlap / 2
+                    if diff >= 0:
+                        angles[a] -= nudge
+                        angles[b] += nudge
+                    else:
+                        angles[a] += nudge
+                        angles[b] -= nudge
+                    rra, rrb = ring_r[a], ring_r[b]
+                    positions[a] = (cx + rra * math.sin(angles[a]), cy - rra * math.cos(angles[a]))
+                    positions[b] = (cx + rrb * math.sin(angles[b]), cy - rrb * math.cos(angles[b]))
+        if not moved:
+            break
+
+
+# ── SVG drawing helpers ───────────────────────────────────────────────────────
+
+
+def _label_anchor(angle: float) -> str:
+    """Text anchor based on which half of the circle the node is on."""
+    x_component = math.sin(angle)
+    if abs(x_component) < 0.25:
+        return "middle"
+    return "start" if x_component > 0 else "end"
+
+
+def _add_defs_filters(defs: ET.Element) -> None:
+    """Inject glow filters for WEAK and CRITICAL nodes into <defs>."""
+    for fid, color, std_dev in [
+        ("glow-warn", EDGE_WARN, "6"),
+        ("glow-crit", EDGE_CRIT, "8"),
+    ]:
+        f = ET.SubElement(
+            defs, "filter", {"id": fid, "x": "-60%", "y": "-60%", "width": "220%", "height": "220%"}
+        )
+        ET.SubElement(
+            f, "feGaussianBlur", {"in": "SourceAlpha", "stdDeviation": std_dev, "result": "blur"}
+        )
+        ET.SubElement(
+            f, "feFlood", {"flood-color": color, "flood-opacity": "0.85", "result": "flood"}
+        )
+        ET.SubElement(
+            f, "feComposite", {"in": "flood", "in2": "blur", "operator": "in", "result": "glow"}
+        )
+        merge = ET.SubElement(f, "feMerge")
+        ET.SubElement(merge, "feMergeNode", {"in": "glow"})
+        ET.SubElement(merge, "feMergeNode", {"in": "SourceGraphic"})
+
+
+def _draw_legend(
+    svg: ET.Element,
+    canvas: int,
+    warn_lqi: int,
+    critical_lqi: int,
+) -> None:
+    lx, ly = 20, 20
+    lw, lh = 300, 316
+    row = 24
+
+    g = ET.SubElement(svg, "g", {"id": "legend"})
+    ET.SubElement(
+        g,
+        "rect",
+        {
+            "x": str(lx),
+            "y": str(ly),
+            "width": str(lw),
+            "height": str(lh),
+            "rx": "8",
+            "fill": "#1e293b",
+            "stroke": "#334155",
+            "stroke-width": "1",
+        },
+    )
+    t = ET.SubElement(
+        g,
+        "text",
+        {
+            "x": str(lx + lw // 2),
+            "y": str(ly + 18),
+            "fill": TEXT_PRIMARY,
+            "font-size": "12px",
+            "text-anchor": "middle",
+            "font-weight": "bold",
+        },
+    )
+    t.text = "Legend"
+
+    y = ly + 42
+
+    # Node types
+    for fill, r, label in [
+        (COORD_FILL, 9, "Coordinator"),
+        (ROUTER_FILL, 7, "Router"),
+        (END_FILL, 5, "End device"),
+    ]:
+        ET.SubElement(
+            g, "circle", {"cx": str(lx + 16), "cy": str(y - 3), "r": str(r), "fill": fill}
+        )
+        txt = ET.SubElement(
+            g,
+            "text",
+            {"x": str(lx + 30), "y": str(y), "fill": TEXT_PRIMARY, "font-size": LEGEND_FS},
+        )
+        txt.text = label
+        y += row
+
+    y += 6
+
+    # Glow indicators for problem nodes
+    ET.SubElement(
+        g,
+        "circle",
+        {
+            "cx": str(lx + 16),
+            "cy": str(y - 3),
+            "r": "7",
+            "fill": ROUTER_FILL,
+            "stroke": EDGE_WARN,
+            "stroke-width": "2",
+            "filter": "url(#glow-warn)",
+        },
+    )
+    txt = ET.SubElement(
+        g, "text", {"x": str(lx + 30), "y": str(y), "fill": EDGE_WARN, "font-size": LEGEND_FS}
+    )
+    txt.text = f"Weak node  (LQI < {warn_lqi})"
+    y += row
+
+    ET.SubElement(
+        g,
+        "circle",
+        {
+            "cx": str(lx + 16),
+            "cy": str(y - 3),
+            "r": "7",
+            "fill": ROUTER_FILL,
+            "stroke": EDGE_CRIT,
+            "stroke-width": "2",
+            "filter": "url(#glow-crit)",
+        },
+    )
+    txt = ET.SubElement(
+        g, "text", {"x": str(lx + 30), "y": str(y), "fill": EDGE_CRIT, "font-size": LEGEND_FS}
+    )
+    txt.text = f"Critical node  (LQI < {critical_lqi})"
+    y += row + 6
+
+    # In-circle LQI explanation
+    ex = lx + 16
+    ey = y - 3
+    ET.SubElement(g, "circle", {"cx": str(ex), "cy": str(ey), "r": "7", "fill": ROUTER_FILL})
+    badge_w_ex = 14
+    ET.SubElement(
+        g,
+        "rect",
+        {
+            "x": str(round(ex - badge_w_ex / 2)),
+            "y": str(ey - 5),
+            "width": str(badge_w_ex),
+            "height": "10",
+            "rx": "3",
+            "fill": "#0f172a",
+            "opacity": "0.82",
+        },
+    )
+    txt = ET.SubElement(
+        g,
+        "text",
+        {
+            "x": str(ex),
+            "y": str(ey + 3),
+            "fill": EDGE_GOOD,
+            "font-size": "8px",
+            "font-weight": "bold",
+            "text-anchor": "middle",
+        },
+    )
+    txt.text = "42"
+    txt = ET.SubElement(
+        g, "text", {"x": str(lx + 30), "y": str(y), "fill": TEXT_DIM, "font-size": LEGEND_FS}
+    )
+    txt.text = "badge: ↑uplink LQI (hop 1)"
+    y += row - 8
+    txt = ET.SubElement(
+        g, "text", {"x": str(lx + 30), "y": str(y), "fill": TEXT_DIM, "font-size": LEGEND_FS}
+    )
+    txt.text = "or path-min LQI (hop 2+)"
+    y += row
+
+    # Depth-1 edge label explanation
+    txt = ET.SubElement(
+        g, "text", {"x": str(lx + 8), "y": str(y), "fill": TEXT_DIM, "font-size": LEGEND_FS}
+    )
+    txt.text = "Hop-1 edges: ↓ coord→dev  ↑ dev→coord"
+    y += row
+
+    # Edge quality
+    for color, label in [
+        (EDGE_GOOD, f"LQI ≥ {warn_lqi}  (good)"),
+        (EDGE_WARN, f"LQI {critical_lqi}–{warn_lqi}  (weak)"),
+        (EDGE_CRIT, f"LQI < {critical_lqi}  (critical)"),
+    ]:
+        ET.SubElement(
+            g,
+            "line",
+            {
+                "x1": str(lx + 8),
+                "y1": str(y - 4),
+                "x2": str(lx + 26),
+                "y2": str(y - 4),
+                "stroke": color,
+                "stroke-width": "2",
+            },
+        )
+        txt = ET.SubElement(
+            g,
+            "text",
+            {"x": str(lx + 32), "y": str(y), "fill": TEXT_PRIMARY, "font-size": LEGEND_FS},
+        )
+        txt.text = label
+        y += row - 4
+
+
+def _draw_node(
+    svg: ET.Element,
+    node_group: ET.Element,
+    label_group: ET.Element,
+    ieee: str,
+    x: float,
+    y: float,
+    angle: float,
+    node: dict[str, Any],
+    depth: int,
+    path_lqi: int,
+    coord_lqi: int | None,
+    lqi: int,
+    warn_lqi: int,
+    critical_lqi: int,
+) -> None:
+    """Draw a single node: circle + glow + LQI badge + label pill + label text."""
+    node_type = node.get("type", "EndDevice")
+    name = node.get("friendlyName", ieee)
+    fill = _node_fill(node_type)
+    nr = _node_radius(node_type)
+    is_coord = node_type == "Coordinator"
+
+    # Status ring + glow filter on problem nodes
+    stroke_color = fill
+    stroke_w = 0
+    glow_filter: str | None = None
+    if not is_coord:
+        if lqi < critical_lqi:
+            stroke_color = EDGE_CRIT
+            stroke_w = 3
+            glow_filter = "url(#glow-crit)"
+        elif lqi < warn_lqi:
+            stroke_color = EDGE_WARN
+            stroke_w = 2
+            glow_filter = "url(#glow-warn)"
+
+    circle_attrs: dict[str, str] = {
+        "cx": str(round(x, 1)),
+        "cy": str(round(y, 1)),
+        "r": str(nr),
+        "fill": fill,
+        "stroke": stroke_color,
+        "stroke-width": str(stroke_w),
+    }
+    if glow_filter:
+        circle_attrs["filter"] = glow_filter
+    ET.SubElement(node_group, "circle", circle_attrs)
+
+    # LQI badge inside non-coordinator nodes
+    if not is_coord:
+        badge_lqi = coord_lqi if (depth == 1 and coord_lqi is not None) else path_lqi
+        lqi_color = _edge_color(badge_lqi, warn_lqi, critical_lqi)
+        is_router = node_type == "Router"
+        badge_fs = "9px" if is_router else "8px"
+        char_w = 6 if is_router else 5
+        badge_h = 11 if is_router else 10
+        badge_w = len(str(badge_lqi)) * char_w + 8
+        ET.SubElement(
+            node_group,
+            "rect",
+            {
+                "x": str(round(x - badge_w / 2, 1)),
+                "y": str(round(y - badge_h / 2, 1)),
+                "width": str(badge_w),
+                "height": str(badge_h),
+                "rx": "3",
+                "fill": "#0f172a",
+                "opacity": "0.82",
+            },
+        )
+        txt = ET.SubElement(
+            node_group,
+            "text",
+            {
+                "x": str(round(x, 1)),
+                "y": str(round(y + badge_h * 0.3, 1)),
+                "fill": lqi_color,
+                "font-size": badge_fs,
+                "font-weight": "bold",
+                "text-anchor": "middle",
+            },
+        )
+        txt.text = str(badge_lqi)
+
+    # Label: radially offset outward from center
+    if is_coord:
+        lx, ly_label = x, y + nr + 16
+        anchor = "middle"
+    else:
+        offset = nr + 14
+        lx = x + math.sin(angle) * offset
+        ly_label = y - math.cos(angle) * offset
+        anchor = _label_anchor(angle)
+
+    # Pill background behind name
+    display_name = (name[: MAX_LABEL_LEN - 1] + "…") if len(name) > MAX_LABEL_LEN else name
+    pill_h = 16
+    pill_w = len(display_name) * 6 + 10
+    if anchor == "start":
+        pill_x = lx - 4
+    elif anchor == "end":
+        pill_x = lx - pill_w + 4
+    else:
+        pill_x = lx - pill_w / 2
+    pill_y = ly_label - 13
+    ET.SubElement(
+        label_group,
+        "rect",
+        {
+            "x": str(round(pill_x, 1)),
+            "y": str(round(pill_y, 1)),
+            "width": str(pill_w),
+            "height": str(pill_h),
+            "rx": "5",
+            "fill": "#0f172a",
+            "opacity": "0.7",
+        },
     )
 
-    for i, ieee in enumerate(sorted_nodes):
-        angles[ieee] = i * angle_step
+    lbl = ET.SubElement(
+        label_group,
+        "text",
+        {
+            "x": str(round(lx, 1)),
+            "y": str(round(ly_label, 1)),
+            "fill": TEXT_PRIMARY,
+            "font-size": LABEL_FS,
+            "text-anchor": anchor,
+        },
+    )
+    lbl.text = display_name
+    if display_name != name:
+        title_el = ET.SubElement(lbl, "title")
+        title_el.text = name
 
-    return angles
+
+# ── Layout orchestration ─────────────────────────────────────────────────────
+
+
+@dataclass
+class LayoutResult:
+    """Computed geometry for every node in the network."""
+
+    positions: dict[str, tuple[float, float]]
+    angles: dict[str, float]
+    ring_radii: dict[int, float]
+    path_min_lqi: dict[str, int]
+    canvas: int
+    cx: float
+    cy: float
+    max_hops: int
+    coordinator_ieee: str
 
 
 def _compute_layout(
     nodes: dict[str, dict[str, Any]],
     parent_map: dict[str, str | None],
+    lqi_map: dict[str, int],
     depth_map: dict[str, int],
-) -> list[NodePosition]:
-    """Compute positions for all nodes in a radial layout."""
-    if not nodes:
-        return []
+    children: dict[str, list[str]],
+) -> LayoutResult | None:
+    """Run the full radial layout pipeline and return geometry, or None if no coordinator."""
+    bad_keys = {k for k in parent_map if k not in nodes}
+    if bad_keys:
+        raise ValueError(f"parent_map contains IEEEs not in nodes: {bad_keys}")
+    bad_parents = {v for v in parent_map.values() if v is not None and v not in nodes}
+    if bad_parents:
+        raise ValueError(f"parent_map references parent IEEEs not in nodes: {bad_parents}")
 
-    depth_counts: dict[int, int] = {}
-    for ieee, depth in depth_map.items():
+    coordinator_ieee = next(
+        (ieee for ieee, n in nodes.items() if n.get("type") == "Coordinator"), None
+    )
+    if coordinator_ieee is None:
+        return None
+
+    max_hops = max(depth_map.values(), default=1)
+    ring_radii = _compute_ring_radii(depth_map, nodes)
+    half = max(ring_radii.values()) + LABEL_MARGIN
+    canvas = int(half * 2)
+    cx, cy = half, half
+
+    leaf_counts = _subtree_weights(coordinator_ieee, children)
+    angles: dict[str, float] = {}
+    _assign_angles(
+        coordinator_ieee,
+        children,
+        leaf_counts,
+        angles,
+        0.0,
+        2 * math.pi,
+        depth_map,
+        nodes,
+        ring_radii,
+    )
+    path_min_lqi = _compute_path_min_lqi(parent_map, lqi_map)
+
+    positions: dict[str, tuple[float, float]] = {}
+    for ieee, angle in angles.items():
+        depth = depth_map.get(ieee, 0)
         if depth > 0:
-            depth_counts[depth] = depth_counts.get(depth, 0) + 1
+            prev_r = ring_radii.get(depth - 1, 0.0)
+            curr_r = ring_radii.get(depth, depth * MIN_RING_GAP)
+            r = (prev_r + curr_r) / 2
+        else:
+            r = 0.0
+        positions[ieee] = (cx + r * math.sin(angle), cy - r * math.cos(angle))
 
-    ring_radii = _compute_ring_radii(depth_counts)
+    _resolve_collisions(positions, angles, depth_map, nodes, cx, cy, ring_radii)
 
-    nodes_by_depth: dict[int, list[str]] = {}
-    for ieee, depth in depth_map.items():
-        nodes_by_depth.setdefault(depth, []).append(ieee)
+    return LayoutResult(
+        positions=positions,
+        angles=angles,
+        ring_radii=ring_radii,
+        path_min_lqi=path_min_lqi,
+        canvas=canvas,
+        cx=cx,
+        cy=cy,
+        max_hops=max_hops,
+        coordinator_ieee=coordinator_ieee,
+    )
 
-    positions: list[NodePosition] = []
-    parent_angles: dict[str, float] = {}
 
-    # Coordinator at center
-    for ieee in nodes_by_depth.get(0, []):
-        node = nodes[ieee]
-        name = node.get("friendlyName", ieee)
-        positions.append(
-            NodePosition(
-                ieee=ieee,
-                x=0,
-                y=0,
-                radius=NODE_R_COORD,
-                depth=0,
-                name=name,
-                node_type="Coordinator",
-            )
-        )
-        parent_angles[ieee] = 0
-
-    max_depth = max(depth_map.values()) if depth_map else 0
-    for depth in range(1, max_depth + 1):
-        depth_nodes = nodes_by_depth.get(depth, [])
-        if not depth_nodes:
-            continue
-
-        angles = _assign_angles(depth_nodes, parent_map, parent_angles)
-        ring_r = ring_radii[depth] if depth < len(ring_radii) else ring_radii[-1] + MIN_RING_GAP
-
-        for ieee in depth_nodes:
-            angle = angles.get(ieee, 0)
-            node = nodes[ieee]
-            name = node.get("friendlyName", ieee)
-            node_type = node.get("type", "EndDevice")
-            nr = _node_radius(node_type)
-            x = ring_r * math.cos(angle)
-            y = ring_r * math.sin(angle)
-            positions.append(
-                NodePosition(
-                    ieee=ieee, x=x, y=y, radius=nr, depth=depth, name=name, node_type=node_type
-                )
-            )
-            parent_angles[ieee] = angle
-
-    return positions
+# ── Public entry point ────────────────────────────────────────────────────────
 
 
 def render_svg(
@@ -200,160 +724,204 @@ def render_svg(
     warn_lqi: int = 50,
     critical_lqi: int = 20,
 ) -> str:
-    """Render the network map as an SVG string."""
-    positions = _compute_layout(nodes, parent_map, depth_map)
-
-    if not positions:
+    """Render a radial Zigbee network map as an SVG XML string."""
+    if not nodes:
         empty = ET.Element(
-            "svg",
-            {
-                "xmlns": "http://www.w3.org/2000/svg",
-                "width": "400",
-                "height": "200",
-            },
+            "svg", {"xmlns": "http://www.w3.org/2000/svg", "width": "400", "height": "200"}
         )
         t = ET.SubElement(
-            empty,
-            "text",
-            {
-                "x": "200",
-                "y": "100",
-                "text-anchor": "middle",
-                "fill": TEXT_PRIMARY,
-            },
+            empty, "text", {"x": "200", "y": "100", "text-anchor": "middle", "fill": TEXT_PRIMARY}
         )
         t.text = "No devices found"
         return ET.tostring(empty, encoding="unicode")
 
-    pos_map = {p.ieee: p for p in positions}
+    # Build children map from parent_map
+    children: dict[str, list[str]] = {}
+    for ieee, parent_ieee in parent_map.items():
+        if parent_ieee is not None:
+            children.setdefault(parent_ieee, []).append(ieee)
 
-    all_x = [p.x for p in positions]
-    all_y = [p.y for p in positions]
-    margin = LABEL_MARGIN
-    min_x = min(all_x) - margin
-    max_x = max(all_x) + margin
-    min_y = min(all_y) - margin
-    max_y = max(all_y) + margin
-    width = max_x - min_x
-    height = max_y - min_y
+    layout = _compute_layout(nodes, parent_map, lqi_map, depth_map, children)
+    if layout is None:
+        empty = ET.Element(
+            "svg", {"xmlns": "http://www.w3.org/2000/svg", "width": "400", "height": "200"}
+        )
+        t = ET.SubElement(
+            empty, "text", {"x": "200", "y": "100", "text-anchor": "middle", "fill": TEXT_PRIMARY}
+        )
+        t.text = "No devices found"
+        return ET.tostring(empty, encoding="unicode")
 
+    positions = layout.positions
+    angles = layout.angles
+    ring_radii = layout.ring_radii
+    path_min_lqi = layout.path_min_lqi
+    canvas = layout.canvas
+    cx, cy = layout.cx, layout.cy
+    max_hops = layout.max_hops
+
+    # ── Drawing ───────────────────────────────────────────────────────────────
     svg = ET.Element(
         "svg",
         {
             "xmlns": "http://www.w3.org/2000/svg",
-            "width": str(int(width)),
-            "height": str(int(height)),
-            "viewBox": f"{min_x} {min_y} {width} {height}",
+            "width": str(canvas),
+            "height": str(canvas),
+            "font-family": "system-ui, -apple-system, sans-serif",
         },
     )
+
+    # Defs: filters
+    defs = ET.SubElement(svg, "defs")
+    _add_defs_filters(defs)
 
     # Background
     ET.SubElement(
-        svg,
-        "rect",
-        {
-            "x": str(min_x),
-            "y": str(min_y),
-            "width": str(width),
-            "height": str(height),
-            "fill": BG,
-        },
+        svg, "rect", {"x": "0", "y": "0", "width": str(canvas), "height": str(canvas), "fill": BG}
+    )
+
+    # Ring band fills (outermost -> innermost so each disc overwrites its interior)
+    ring_fill_group = ET.SubElement(svg, "g", {"id": "ring-fills"})
+    for h in range(max_hops, 0, -1):
+        t_val = (h - 1) / max(max_hops - 1, 1)
+        band_fill = _lerp_color(t_val, "#0d2420", "#201018")
+        ET.SubElement(
+            ring_fill_group,
+            "circle",
+            {
+                "cx": str(cx),
+                "cy": str(cy),
+                "r": str(round(ring_radii[h], 1)),
+                "fill": band_fill,
+                "stroke": "none",
+            },
+        )
+    # Restore the coordinator centre area to background
+    ET.SubElement(
+        ring_fill_group,
+        "circle",
+        {"cx": str(cx), "cy": str(cy), "r": str(NODE_R_COORD + 10), "fill": BG, "stroke": "none"},
     )
 
     # Ring guides
-    depth_counts: dict[int, int] = {}
-    for d in depth_map.values():
-        if d > 0:
-            depth_counts[d] = depth_counts.get(d, 0) + 1
-    ring_radii = _compute_ring_radii(depth_counts)
-    for i, r in enumerate(ring_radii[1:], 1):
-        color = HOP_COLORS[(i - 1) % len(HOP_COLORS)]
+    ring_group = ET.SubElement(svg, "g", {"id": "rings"})
+    for h in range(1, max_hops + 1):
+        t_val = (h - 1) / max(max_hops - 1, 1)
+        ring_stroke = _lerp_color(t_val, "#1e4035", "#3d1e2e")
+        ring_label_c = HOP_COLORS[(h - 1) % len(HOP_COLORS)]
+        ring_r = ring_radii[h]
         ET.SubElement(
-            svg,
+            ring_group,
             "circle",
             {
-                "cx": "0",
-                "cy": "0",
-                "r": str(int(r)),
+                "cx": str(cx),
+                "cy": str(cy),
+                "r": str(round(ring_r, 1)),
                 "fill": "none",
-                "stroke": color,
+                "stroke": ring_stroke,
                 "stroke-width": "1",
-                "stroke-opacity": "0.2",
+                "stroke-dasharray": "5,4",
             },
         )
+        txt = ET.SubElement(
+            ring_group,
+            "text",
+            {
+                "x": str(cx),
+                "y": str(round(cy - ring_r + 14, 1)),
+                "fill": ring_label_c,
+                "font-size": "12px",
+                "text-anchor": "middle",
+                "font-weight": "bold",
+                "letter-spacing": "0.5",
+            },
+        )
+        txt.text = f"Hop {h}"
 
-    # Edges
+    # Edges + LQI pill badges
+    edge_group = ET.SubElement(svg, "g", {"id": "edges", "opacity": str(EDGE_OPACITY)})
+    lqi_label_group = ET.SubElement(svg, "g", {"id": "lqi-labels"})
     for ieee, parent_ieee in parent_map.items():
         if parent_ieee is None:
             continue
-        if ieee not in pos_map or parent_ieee not in pos_map:
+        if ieee not in positions or parent_ieee not in positions:
             continue
-        p1 = pos_map[ieee]
-        p2 = pos_map[parent_ieee]
+        x1, y1 = positions[ieee]
+        x2, y2 = positions[parent_ieee]
         lqi = lqi_map.get(ieee, 0)
         color = _edge_color(lqi, warn_lqi, critical_lqi)
         ET.SubElement(
-            svg,
+            edge_group,
             "line",
             {
-                "x1": str(p1.x),
-                "y1": str(p1.y),
-                "x2": str(p2.x),
-                "y2": str(p2.y),
+                "x1": str(round(x1, 1)),
+                "y1": str(round(y1, 1)),
+                "x2": str(round(x2, 1)),
+                "y2": str(round(y2, 1)),
                 "stroke": color,
-                "stroke-width": "2",
-                "stroke-opacity": str(EDGE_OPACITY),
+                "stroke-width": str(_edge_width(lqi)),
             },
         )
-
-    # Nodes
-    for pos in positions:
-        fill = _node_fill(pos.node_type)
-        g = ET.SubElement(svg, "g")
-
+        # LQI label on edge
+        lqi_text = f"LQI: {lqi}"
+        mx = x1 + 0.35 * (x2 - x1)
+        my = y1 + 0.35 * (y2 - y1)
+        badge_w = len(lqi_text) * 7 + 10
         ET.SubElement(
-            g,
-            "circle",
+            lqi_label_group,
+            "rect",
             {
-                "cx": str(pos.x),
-                "cy": str(pos.y),
-                "r": str(pos.radius),
-                "fill": fill,
+                "x": str(round(mx - badge_w / 2, 1)),
+                "y": str(round(my - 9, 1)),
+                "width": str(badge_w),
+                "height": "13",
+                "rx": "4",
+                "fill": "#0f172a",
+                "opacity": "0.85",
             },
         )
-
-        title = ET.SubElement(g, "title")
-        title.text = pos.name
-
-        label = pos.name[:MAX_LABEL_LEN]
-        text = ET.SubElement(
-            g,
+        txt = ET.SubElement(
+            lqi_label_group,
             "text",
             {
-                "x": str(pos.x),
-                "y": str(pos.y + pos.radius + 16),
+                "x": str(round(mx, 1)),
+                "y": str(round(my + 1, 1)),
+                "fill": color,
+                "font-size": DIM_FS,
                 "text-anchor": "middle",
-                "fill": TEXT_PRIMARY,
-                "font-size": LABEL_FS,
-                "font-family": "sans-serif",
+                "opacity": "0.95",
             },
         )
-        text.text = label
+        txt.text = lqi_text
 
-        if pos.depth > 0:
-            lqi = lqi_map.get(pos.ieee, 0)
-            lqi_text = ET.SubElement(
-                g,
-                "text",
-                {
-                    "x": str(pos.x),
-                    "y": str(pos.y + pos.radius + 30),
-                    "text-anchor": "middle",
-                    "fill": _edge_color(lqi, warn_lqi, critical_lqi),
-                    "font-size": LABEL_FS,
-                    "font-family": "sans-serif",
-                },
-            )
-            lqi_text.text = f"LQI: {lqi}"
+    # Nodes + labels
+    node_group = ET.SubElement(svg, "g", {"id": "nodes"})
+    label_group = ET.SubElement(svg, "g", {"id": "labels"})
+
+    for ieee, (x, y) in positions.items():
+        node = nodes[ieee]
+        depth = depth_map.get(ieee, 0)
+        path_lqi_val = path_min_lqi.get(ieee, 0)
+        coord_lqi = None  # coord_lqi_map not passed in HACS version
+        angle = angles.get(ieee, 0.0)
+        _draw_node(
+            svg,
+            node_group,
+            label_group,
+            ieee,
+            x,
+            y,
+            angle,
+            node,
+            depth,
+            path_lqi_val,
+            coord_lqi,
+            lqi_map.get(ieee, 0),
+            warn_lqi,
+            critical_lqi,
+        )
+
+    # Legend
+    _draw_legend(svg, canvas, warn_lqi, critical_lqi)
 
     return ET.tostring(svg, encoding="unicode")
