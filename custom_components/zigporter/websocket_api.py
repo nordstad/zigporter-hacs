@@ -176,8 +176,9 @@ async def _fetch_z2m_topology(
         unsub()
 
     data = response.get("data", response)
-    raw_nodes: list[dict[str, Any]] = data.get("nodes", [])
-    links: list[dict[str, Any]] = data.get("links", [])
+    value = data.get("value", data)
+    raw_nodes: list[dict[str, Any]] = value.get("nodes", [])
+    links: list[dict[str, Any]] = value.get("links", [])
 
     nodes: dict[str, dict[str, Any]] = {}
     for n in raw_nodes:
