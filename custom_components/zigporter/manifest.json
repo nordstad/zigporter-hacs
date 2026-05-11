@@ -1,13 +1,13 @@
 {
   "domain": "zigporter",
   "name": "Zigporter",
-  "version": "0.1.0",
-  "documentation": "https://github.com/nordstad/zigporter-hacs",
-  "issue_tracker": "https://github.com/nordstad/zigporter-hacs/issues",
-  "requirements": [],
-  "dependencies": ["mqtt"],
   "after_dependencies": ["zha"],
   "codeowners": ["@nordstad"],
+  "config_flow": true,
+  "dependencies": ["mqtt"],
+  "documentation": "https://github.com/nordstad/zigporter-hacs",
   "iot_class": "local_polling",
-  "config_flow": true
+  "issue_tracker": "https://github.com/nordstad/zigporter-hacs/issues",
+  "requirements": [],
+  "version": "0.1.0"
 }
