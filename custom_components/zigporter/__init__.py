@@ -10,11 +10,8 @@ from .const import DOMAIN
 from .websocket_api import async_register_websocket_commands
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Zigporter from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {"cache": None, "cache_time": None}
-
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the Zigporter integration (once per HA instance)."""
     static_dir = Path(__file__).parent / "static"
     await hass.http.async_register_static_paths(
         [
@@ -25,8 +22,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         ]
     )
-
     async_register_websocket_commands(hass)
+    return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Zigporter from a config entry."""
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {"cache": None, "cache_time": None}
     return True
 
 
