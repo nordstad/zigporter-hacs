@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -15,10 +16,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {"cache": None, "cache_time": None}
 
     static_dir = Path(__file__).parent / "static"
-    hass.http.register_static_path(
-        "/zigporter/zigporter-network-map-card.js",
-        str(static_dir / "zigporter-network-map-card.js"),
-        cache_headers=True,
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                url_path="/zigporter/zigporter-network-map-card.js",
+                path=str(static_dir / "zigporter-network-map-card.js"),
+                cache_headers=True,
+            )
+        ]
     )
 
     async_register_websocket_commands(hass)
