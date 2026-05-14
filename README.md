@@ -57,11 +57,27 @@ Click **Configure** on the integration to adjust:
 
 The card JS is registered automatically — no manual resource setup needed.
 
-Add a card to your dashboard:
+### Adding the card (recommended: Panel view)
+
+The network map works best as a full-page card in a **Panel** view:
+
+1. Open your dashboard and click the **pencil icon** (top-right) to enter edit mode.
+2. Click the **+** tab to create a new view.
+3. In the view settings, select **Panel (single card)** as the layout, give it a title (e.g. "Zigbee Network"), and click **Save**.
+4. Click **+ Add card** (bottom-right).
+5. Search for **"Zigporter"** — or scroll to the bottom and choose **Manual**, then paste:
 
 ```yaml
 type: custom:zigporter-network-map-card
 ```
+
+6. Click **Save**, then **Done** to exit edit mode.
+
+The map will appear empty until you click **Scan** to request the first network topology.
+
+> **Alternative:** You can also add the card inside a Sections or Masonry view by clicking the **+** inside any section — the card will just be smaller.
+
+### Card options
 
 | Option | Default | Description |
 |--------|---------|-------------|
