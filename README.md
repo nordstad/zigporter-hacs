@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/github/license/nordstad/zigporter-hacs)](LICENSE)
 
 <p align="center">
-  <img src="images/zigporter_logo_small.png" alt="Zigporter" width="128">
+  <img src="custom_components/zigporter/brand/icon.png" alt="Zigporter" width="128">
 </p>
 
 Zigbee network topology map for Home Assistant. Visualize your mesh network with LQI signal quality indicators, routing paths, and device hierarchy.
