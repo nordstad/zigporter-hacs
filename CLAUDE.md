@@ -46,10 +46,19 @@ After deploying changes:
 - `viewBox` must encompass ring circles, not just node positions (rings extend beyond sparse node areas).
 - SVG `max-height` clips inline SVG; use explicit `height` with `preserveAspectRatio` for scaling.
 - Tight viewBox from node positions alone clips the outer rings in directions with no nodes.
+- **Import errors → "Invalid handler specified"**: If config_flow.py imports new symbols from const.py, HA shows this cryptic error. The real traceback is in Settings → System → Logs. Common cause: file not fully copied (truncated paste), or `.pyc` cache serving stale bytecode. Fix: delete `/config/custom_components/zigporter/__pycache__/` after copying Python files, then restart HA.
+- **Backend auto-detect**: User has both ZHA and Z2M installed. Auto-detect picks ZHA first (checked before MQTT). Must explicitly select "Zigbee2MQTT" during integration setup to use Z2M.
+- **Z2M scan timeout**: Z2M networkmap MQTT request takes 60-70s for 48 devices (9 hops). Larger networks reported up to 9 min. Timeout is configurable in integration options (default 180s, range 60-600s).
+
+## Current State
+
+- Pan/zoom implemented (wheel, drag, pinch-to-zoom, reset button)
+- Buttons: text labels ("Reset", "Scan") instead of unicode icons
+- Stats line shows backend: "Z2M · 48 devices · 9 hops · 66.8s"
+- Scan timeout configurable via integration options
 
 ## Future Improvements
 
 - Dev iteration workflow (git push → HA pull via shell_command)
-- Pan/zoom interaction on the SVG
 - Device name readability at current scale
 - Mobile/tablet responsive sizing

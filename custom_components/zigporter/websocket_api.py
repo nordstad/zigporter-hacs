@@ -19,10 +19,12 @@ from .const import (
     CONF_CACHE_TTL,
     CONF_CRITICAL_LQI,
     CONF_MQTT_TOPIC,
+    CONF_SCAN_TIMEOUT,
     CONF_WARN_LQI,
     DEFAULT_CACHE_TTL,
     DEFAULT_CRITICAL_LQI,
     DEFAULT_MQTT_TOPIC,
+    DEFAULT_SCAN_TIMEOUT,
     DEFAULT_WARN_LQI,
     DOMAIN,
 )
@@ -34,8 +36,6 @@ from .network_map import (
 from .network_map_svg import render_svg
 
 _LOGGER = logging.getLogger(__name__)
-
-SCAN_TIMEOUT = 120
 
 
 @callback
@@ -84,11 +84,15 @@ async def ws_network_map(
 
     start = time.monotonic()
 
+    scan_timeout = entry.options.get(CONF_SCAN_TIMEOUT, DEFAULT_SCAN_TIMEOUT)
+
     try:
         if resolved == BACKEND_Z2M:
-            topology = await _fetch_z2m_topology(hass, entry)
+            topology = await _fetch_z2m_topology(hass, entry, scan_timeout)
         else:
-            topology = await _fetch_zha_topology(hass)
+            topology = await asyncio.wait_for(
+                _fetch_zha_topology(hass), timeout=scan_timeout
+            )
     except TimeoutError:
         connection.send_error(msg["id"], "timeout", "Network scan timed out")
         return
@@ -124,6 +128,7 @@ async def ws_network_map(
         "device_count": device_count,
         "max_depth": max_depth,
         "scan_duration_ms": scan_duration_ms,
+        "backend": resolved,
     }
 
     hass.data[DOMAIN][entry.entry_id]["cache"] = result
@@ -168,7 +173,7 @@ def _resolve_backend(hass: HomeAssistant, backend: str) -> str | None:
 
 
 async def _fetch_z2m_topology(
-    hass: HomeAssistant, entry: Any
+    hass: HomeAssistant, entry: Any, timeout: int = DEFAULT_SCAN_TIMEOUT
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]] | None:
     """Fetch topology from Zigbee2MQTT via MQTT."""
     topic_prefix = entry.data.get(CONF_MQTT_TOPIC, DEFAULT_MQTT_TOPIC)
@@ -197,7 +202,7 @@ async def _fetch_z2m_topology(
     try:
         await mqtt.async_publish(hass, request_topic, '{"type":"raw","routes":true}', qos=0)
         _LOGGER.debug("Published networkmap request to %s", request_topic)
-        response = await asyncio.wait_for(future, timeout=SCAN_TIMEOUT)
+        response = await asyncio.wait_for(future, timeout=timeout)
     finally:
         unsub()
 

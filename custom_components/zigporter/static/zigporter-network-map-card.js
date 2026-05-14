@@ -60,10 +60,14 @@ class ZigporterNetworkMapCard extends HTMLElement {
       }
       @keyframes spin { to { transform: rotate(360deg); } }
       .timer { font-size: 12px; margin-top: 8px; opacity: 0.7; }
-      .refresh-btn { background: none; border: none; cursor: pointer; color: var(--primary-color); padding: 8px; font-size: 18px; }
-      .refresh-btn:hover { opacity: 0.8; }
-      .refresh-btn:disabled { opacity: 0.3; cursor: default; }
-      .btn-group { display: flex; align-items: center; }
+      .btn-group { display: flex; align-items: center; gap: 8px; }
+      .action-btn {
+        background: none; border: 1px solid var(--divider-color, #444);
+        border-radius: 4px; cursor: pointer; color: var(--primary-text-color);
+        padding: 4px 12px; font-size: 13px; font-weight: 500;
+      }
+      .action-btn:hover { background: var(--secondary-background-color); }
+      .action-btn:disabled { opacity: 0.3; cursor: default; }
     `;
 
     const header = document.createElement("div");
@@ -73,14 +77,14 @@ class ZigporterNetworkMapCard extends HTMLElement {
     title.textContent = this._config.title;
 
     const refreshBtn = document.createElement("button");
-    refreshBtn.className = "refresh-btn";
-    refreshBtn.textContent = "↻";
+    refreshBtn.className = "action-btn";
+    refreshBtn.textContent = "Scan";
     refreshBtn.title = "Refresh network scan";
     refreshBtn.addEventListener("click", () => this._fetchMap(true));
 
     const resetBtn = document.createElement("button");
-    resetBtn.className = "refresh-btn";
-    resetBtn.textContent = "⊡";
+    resetBtn.className = "action-btn";
+    resetBtn.textContent = "Reset";
     resetBtn.title = "Reset zoom";
     resetBtn.addEventListener("click", () => this._resetView());
 
@@ -128,7 +132,7 @@ class ZigporterNetworkMapCard extends HTMLElement {
 
     const mapEl = this.shadowRoot.getElementById("map");
     const statsEl = this.shadowRoot.getElementById("stats");
-    const btns = this.shadowRoot.querySelectorAll(".refresh-btn");
+    const btns = this.shadowRoot.querySelectorAll(".action-btn");
 
     btns.forEach((b) => (b.disabled = true));
 
@@ -197,7 +201,8 @@ class ZigporterNetworkMapCard extends HTMLElement {
         const duration = result.scan_duration_ms < 1000
           ? result.scan_duration_ms + "ms"
           : (result.scan_duration_ms / 1000).toFixed(1) + "s";
-        statsEl.textContent = result.device_count + " devices \u00b7 " + result.max_depth + " hops \u00b7 " + duration;
+        const backendLabel = result.backend === "zha" ? "ZHA" : "Z2M";
+        statsEl.textContent = backendLabel + " \u00b7 " + result.device_count + " devices \u00b7 " + result.max_depth + " hops \u00b7 " + duration;
       }
     } catch (err) {
       clearInterval(timerInterval);

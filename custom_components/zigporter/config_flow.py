@@ -15,10 +15,12 @@ from .const import (
     CONF_CACHE_TTL,
     CONF_CRITICAL_LQI,
     CONF_MQTT_TOPIC,
+    CONF_SCAN_TIMEOUT,
     CONF_WARN_LQI,
     DEFAULT_CACHE_TTL,
     DEFAULT_CRITICAL_LQI,
     DEFAULT_MQTT_TOPIC,
+    DEFAULT_SCAN_TIMEOUT,
     DEFAULT_WARN_LQI,
     DOMAIN,
 )
@@ -81,6 +83,10 @@ class ZigporterOptionsFlow(OptionsFlow):
                     CONF_CACHE_TTL,
                     default=current.get(CONF_CACHE_TTL, DEFAULT_CACHE_TTL),
                 ): vol.All(int, vol.Range(min=0, max=3600)),
+                vol.Optional(
+                    CONF_SCAN_TIMEOUT,
+                    default=current.get(CONF_SCAN_TIMEOUT, DEFAULT_SCAN_TIMEOUT),
+                ): vol.All(int, vol.Range(min=60, max=600)),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)
