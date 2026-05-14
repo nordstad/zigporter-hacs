@@ -19,17 +19,17 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Zigporter integration (once per HA instance)."""
     static_dir = Path(__file__).parent / "static"
-    card_url = "/zigporter/zigporter-network-map-card.js"
+    card_path = "/zigporter/zigporter-network-map-card.js"
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(
-                url_path=card_url,
+                url_path=card_path,
                 path=str(static_dir / "zigporter-network-map-card.js"),
                 cache_headers=False,
             )
         ]
     )
-    add_extra_js_url(hass, card_url)
+    add_extra_js_url(hass, card_path)
     async_register_websocket_commands(hass)
     return True
 

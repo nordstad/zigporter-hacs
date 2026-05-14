@@ -452,11 +452,15 @@ class ZigporterNetworkMapCard extends HTMLElement {
   }
 }
 
-customElements.define("zigporter-network-map-card", ZigporterNetworkMapCard);
+if (!customElements.get("zigporter-network-map-card")) {
+  customElements.define("zigporter-network-map-card", ZigporterNetworkMapCard);
+}
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "zigporter-network-map-card",
-  name: "Zigporter Network Map",
-  description: "Visualize your Zigbee mesh network topology",
-});
+if (!window.customCards.some((c) => c.type === "zigporter-network-map-card")) {
+  window.customCards.push({
+    type: "zigporter-network-map-card",
+    name: "Zigporter Network Map",
+    description: "Visualize your Zigbee mesh network topology",
+  });
+}

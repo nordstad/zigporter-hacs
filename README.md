@@ -44,9 +44,14 @@ Click **Configure** on the integration to adjust:
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| Backend | *(from setup)* | Switch between Zigbee2MQTT and ZHA without reinstalling |
+| MQTT topic | `zigbee2mqtt` | Topic prefix for Z2M (only relevant when backend is Z2M) |
 | Warning LQI | 50 | Links below this show yellow |
 | Critical LQI | 20 | Links below this show red |
-| Scan timeout | 180s | Max wait for network scan (Z2M can take 60–70s for ~50 devices) |
+| Scan timeout | 600s | Max wait for network scan |
+| Cache TTL | 0 | Seconds to cache the map (0 = manual refresh only) |
+
+> **Tip:** If you have both ZHA and Zigbee2MQTT running, you can switch between them in options to view either network — no need to remove and re-add the integration.
 
 ## Dashboard Card
 

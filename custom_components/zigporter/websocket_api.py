@@ -74,7 +74,7 @@ async def ws_network_map(
             connection.send_result(msg["id"], cache_data["cache"])
             return
 
-    backend = entry.data.get(CONF_BACKEND)
+    backend = entry.options.get(CONF_BACKEND, entry.data.get(CONF_BACKEND))
     resolved = _resolve_backend(backend)
 
     if resolved is None:
@@ -167,7 +167,9 @@ async def _fetch_z2m_topology(
     hass: HomeAssistant, entry: Any, timeout: int = DEFAULT_SCAN_TIMEOUT
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]] | None:
     """Fetch topology from Zigbee2MQTT via MQTT."""
-    topic_prefix = entry.data.get(CONF_MQTT_TOPIC, DEFAULT_MQTT_TOPIC)
+    topic_prefix = entry.options.get(
+        CONF_MQTT_TOPIC, entry.data.get(CONF_MQTT_TOPIC, DEFAULT_MQTT_TOPIC)
+    )
     response_topic = f"{topic_prefix}/bridge/response/networkmap"
     request_topic = f"{topic_prefix}/bridge/request/networkmap"
 

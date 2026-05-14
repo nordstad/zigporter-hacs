@@ -74,9 +74,25 @@ class ZigporterOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        data = self.config_entry.data
         current = self.config_entry.options
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_BACKEND,
+                    default=current.get(CONF_BACKEND, data.get(CONF_BACKEND, BACKEND_Z2M)),
+                ): vol.In(
+                    {
+                        BACKEND_Z2M: "Zigbee2MQTT",
+                        BACKEND_ZHA: "ZHA",
+                    }
+                ),
+                vol.Optional(
+                    CONF_MQTT_TOPIC,
+                    default=current.get(
+                        CONF_MQTT_TOPIC, data.get(CONF_MQTT_TOPIC, DEFAULT_MQTT_TOPIC)
+                    ),
+                ): str,
                 vol.Optional(
                     CONF_WARN_LQI,
                     default=current.get(CONF_WARN_LQI, DEFAULT_WARN_LQI),
