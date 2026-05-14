@@ -89,9 +89,7 @@ async def ws_network_map(
         if resolved == BACKEND_Z2M:
             topology = await _fetch_z2m_topology(hass, entry, scan_timeout)
         else:
-            topology = await asyncio.wait_for(
-                _fetch_zha_topology(hass), timeout=scan_timeout
-            )
+            topology = await asyncio.wait_for(_fetch_zha_topology(hass), timeout=scan_timeout)
     except TimeoutError:
         connection.send_error(msg["id"], "timeout", "Network scan timed out")
         return
@@ -172,11 +170,6 @@ async def _fetch_z2m_topology(
     )
     response_topic = f"{topic_prefix}/bridge/response/networkmap"
     request_topic = f"{topic_prefix}/bridge/request/networkmap"
-
-    import json  # noqa: PLC0415
-    import logging  # noqa: PLC0415
-
-    _LOGGER = logging.getLogger(__name__)
 
     future: asyncio.Future[dict[str, Any]] = hass.loop.create_future()
 

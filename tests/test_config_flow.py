@@ -1,5 +1,8 @@
 """Tests for config flow — validates schema and defaults."""
 
+import voluptuous as vol
+import pytest
+
 from custom_components.zigporter.const import (
     BACKEND_Z2M,
     BACKEND_ZHA,
@@ -7,12 +10,15 @@ from custom_components.zigporter.const import (
     CONF_CACHE_TTL,
     CONF_CRITICAL_LQI,
     CONF_MQTT_TOPIC,
+    CONF_SCAN_TIMEOUT,
     CONF_WARN_LQI,
     DEFAULT_CACHE_TTL,
     DEFAULT_CRITICAL_LQI,
     DEFAULT_MQTT_TOPIC,
+    DEFAULT_SCAN_TIMEOUT,
     DEFAULT_WARN_LQI,
 )
+from custom_components.zigporter.websocket_api import _resolve_backend
 
 
 class TestConfigFlowConstants:
@@ -35,3 +41,94 @@ class TestConfigFlowConstants:
             CONF_CACHE_TTL,
         ]:
             assert isinstance(key, str)
+
+
+OPTIONS_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_BACKEND): vol.In({BACKEND_Z2M: "Zigbee2MQTT", BACKEND_ZHA: "ZHA"}),
+        vol.Optional(CONF_MQTT_TOPIC, default=DEFAULT_MQTT_TOPIC): str,
+        vol.Optional(CONF_WARN_LQI, default=DEFAULT_WARN_LQI): vol.All(
+            int, vol.Range(min=1, max=255)
+        ),
+        vol.Optional(CONF_CRITICAL_LQI, default=DEFAULT_CRITICAL_LQI): vol.All(
+            int, vol.Range(min=1, max=255)
+        ),
+        vol.Optional(CONF_CACHE_TTL, default=DEFAULT_CACHE_TTL): vol.All(
+            int, vol.Range(min=0, max=3600)
+        ),
+        vol.Optional(CONF_SCAN_TIMEOUT, default=DEFAULT_SCAN_TIMEOUT): vol.All(
+            int, vol.Range(min=60, max=600)
+        ),
+    }
+)
+
+
+class TestOptionsFlowSchema:
+    def test_accepts_valid_z2m_input(self):
+        data = OPTIONS_SCHEMA(
+            {
+                CONF_BACKEND: BACKEND_Z2M,
+                CONF_MQTT_TOPIC: "zigbee2mqtt",
+                CONF_WARN_LQI: 50,
+                CONF_CRITICAL_LQI: 20,
+                CONF_CACHE_TTL: 0,
+                CONF_SCAN_TIMEOUT: 180,
+            }
+        )
+        assert data[CONF_BACKEND] == BACKEND_Z2M
+        assert data[CONF_SCAN_TIMEOUT] == 180
+
+    def test_accepts_valid_zha_input(self):
+        data = OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_ZHA})
+        assert data[CONF_BACKEND] == BACKEND_ZHA
+        assert data[CONF_MQTT_TOPIC] == DEFAULT_MQTT_TOPIC
+
+    def test_rejects_invalid_backend(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: "deconz"})
+
+    def test_rejects_warn_lqi_out_of_range(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_WARN_LQI: 0})
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_WARN_LQI: 256})
+
+    def test_rejects_critical_lqi_out_of_range(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_CRITICAL_LQI: -1})
+
+    def test_rejects_cache_ttl_out_of_range(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_CACHE_TTL: 3601})
+
+    def test_rejects_scan_timeout_too_low(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_SCAN_TIMEOUT: 30})
+
+    def test_rejects_scan_timeout_too_high(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_SCAN_TIMEOUT: 601})
+
+    def test_defaults_applied_when_optional_omitted(self):
+        data = OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M})
+        assert data[CONF_WARN_LQI] == DEFAULT_WARN_LQI
+        assert data[CONF_CRITICAL_LQI] == DEFAULT_CRITICAL_LQI
+        assert data[CONF_CACHE_TTL] == DEFAULT_CACHE_TTL
+        assert data[CONF_SCAN_TIMEOUT] == DEFAULT_SCAN_TIMEOUT
+
+
+class TestResolveBackend:
+    def test_z2m(self):
+        assert _resolve_backend(BACKEND_Z2M) == BACKEND_Z2M
+
+    def test_zha(self):
+        assert _resolve_backend(BACKEND_ZHA) == BACKEND_ZHA
+
+    def test_none_returns_none(self):
+        assert _resolve_backend(None) is None
+
+    def test_invalid_string_returns_none(self):
+        assert _resolve_backend("deconz") is None
+
+    def test_empty_string_returns_none(self):
+        assert _resolve_backend("") is None

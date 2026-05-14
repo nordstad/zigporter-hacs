@@ -318,7 +318,6 @@ def _add_defs_filters(defs: ET.Element) -> None:
         ET.SubElement(merge, "feMergeNode", {"in": "SourceGraphic"})
 
 
-
 def _draw_node(
     svg: ET.Element,
     node_group: ET.Element,
@@ -589,7 +588,6 @@ def render_svg(
     angles = layout.angles
     ring_radii = layout.ring_radii
     path_min_lqi = layout.path_min_lqi
-    canvas = layout.canvas
     cx, cy = layout.cx, layout.cy
     max_hops = layout.max_hops
 
