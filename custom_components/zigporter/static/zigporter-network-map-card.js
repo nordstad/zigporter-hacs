@@ -1,4 +1,13 @@
 class ZigporterNetworkMapCard extends HTMLElement {
+  _svgEl = null;
+  _vb = null;
+  _vbInitial = null;
+  _zoomLevel = 1;
+  _pointers = new Map();
+  _lastPanPoint = null;
+  _lastPinchDist = null;
+  _lastPinchMid = null;
+
   static getConfigElement() {
     return document.createElement("zigporter-network-map-card-editor");
   }
@@ -38,7 +47,8 @@ class ZigporterNetworkMapCard extends HTMLElement {
       .header h2 { margin: 0; font-size: 16px; font-weight: 500; }
       .stats { padding: 0 16px 4px; font-size: 12px; color: var(--secondary-text-color); }
       .map-container { width: 100%; }
-      .map-container svg { width: 100%; height: calc(100vh - 140px); display: block; }
+      .map-container svg { width: 100%; height: calc(100vh - 140px); display: block; cursor: grab; touch-action: none; }
+      .map-container svg:active { cursor: grabbing; }
       .status { padding: 48px 24px; text-align: center; color: var(--secondary-text-color); }
       .error { color: var(--error-color); }
       .spinner {
@@ -53,6 +63,7 @@ class ZigporterNetworkMapCard extends HTMLElement {
       .refresh-btn { background: none; border: none; cursor: pointer; color: var(--primary-color); padding: 8px; font-size: 18px; }
       .refresh-btn:hover { opacity: 0.8; }
       .refresh-btn:disabled { opacity: 0.3; cursor: default; }
+      .btn-group { display: flex; align-items: center; }
     `;
 
     const header = document.createElement("div");
@@ -67,8 +78,19 @@ class ZigporterNetworkMapCard extends HTMLElement {
     refreshBtn.title = "Refresh network scan";
     refreshBtn.addEventListener("click", () => this._fetchMap(true));
 
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "refresh-btn";
+    resetBtn.textContent = "⊡";
+    resetBtn.title = "Reset zoom";
+    resetBtn.addEventListener("click", () => this._resetView());
+
+    const btnGroup = document.createElement("div");
+    btnGroup.className = "btn-group";
+    btnGroup.appendChild(resetBtn);
+    btnGroup.appendChild(refreshBtn);
+
     header.appendChild(title);
-    header.appendChild(refreshBtn);
+    header.appendChild(btnGroup);
 
     const stats = document.createElement("div");
     stats.className = "stats";
@@ -106,9 +128,9 @@ class ZigporterNetworkMapCard extends HTMLElement {
 
     const mapEl = this.shadowRoot.getElementById("map");
     const statsEl = this.shadowRoot.getElementById("stats");
-    const btn = this.shadowRoot.querySelector(".refresh-btn");
+    const btns = this.shadowRoot.querySelectorAll(".refresh-btn");
 
-    if (btn) btn.disabled = true;
+    btns.forEach((b) => (b.disabled = true));
 
     // Show loading state with spinner and elapsed timer
     mapEl.textContent = "";
@@ -168,6 +190,8 @@ class ZigporterNetworkMapCard extends HTMLElement {
 
       mapEl.textContent = "";
       mapEl.appendChild(svgEl);
+      this._svgEl = svgEl;
+      this._initPanZoom(svgEl);
 
       if (this._config.show_stats && statsEl) {
         const duration = result.scan_duration_ms < 1000
@@ -191,8 +215,161 @@ class ZigporterNetworkMapCard extends HTMLElement {
       errDiv.appendChild(errTimer);
       mapEl.appendChild(errDiv);
     } finally {
-      if (btn) btn.disabled = false;
+      btns.forEach((b) => (b.disabled = false));
     }
+  }
+
+  _initPanZoom(svgEl) {
+    const vbStr = svgEl.getAttribute("viewBox");
+    if (!vbStr) return;
+    const [x, y, w, h] = vbStr.split(/\s+/).map(Number);
+    this._vb = { x, y, w, h };
+    this._vbInitial = { x, y, w, h };
+    this._zoomLevel = 1;
+    this._pointers = new Map();
+    this._lastPanPoint = null;
+    this._lastPinchDist = null;
+    this._lastPinchMid = null;
+
+    svgEl.addEventListener("wheel", (e) => this._onWheel(e), { passive: false });
+    svgEl.addEventListener("pointerdown", (e) => this._onPointerDown(e));
+    svgEl.addEventListener("pointermove", (e) => this._onPointerMove(e));
+    svgEl.addEventListener("pointerup", (e) => this._onPointerUp(e));
+    svgEl.addEventListener("pointercancel", (e) => this._onPointerUp(e));
+  }
+
+  _screenToSVG(clientX, clientY) {
+    const ctm = this._svgEl.getScreenCTM();
+    if (ctm) {
+      const pt = this._svgEl.createSVGPoint();
+      pt.x = clientX;
+      pt.y = clientY;
+      return pt.matrixTransform(ctm.inverse());
+    }
+    const rect = this._svgEl.getBoundingClientRect();
+    return {
+      x: this._vb.x + ((clientX - rect.left) / rect.width) * this._vb.w,
+      y: this._vb.y + ((clientY - rect.top) / rect.height) * this._vb.h,
+    };
+  }
+
+  _applyViewBox() {
+    this._svgEl.setAttribute("viewBox", `${this._vb.x} ${this._vb.y} ${this._vb.w} ${this._vb.h}`);
+  }
+
+  _resetView() {
+    if (!this._vbInitial || !this._svgEl) return;
+    this._vb = { ...this._vbInitial };
+    this._zoomLevel = 1;
+    this._applyViewBox();
+  }
+
+  _onWheel(e) {
+    e.preventDefault();
+    if (!this._vb) return;
+    const delta = -Math.sign(e.deltaY);
+    const factor = delta > 0 ? 0.8 : 1.25;
+
+    const newZoom = this._vbInitial.w / (this._vb.w * factor);
+    if (newZoom < 1 || newZoom > 8) return;
+
+    const svgPt = this._screenToSVG(e.clientX, e.clientY);
+    this._vb.w *= factor;
+    this._vb.h *= factor;
+
+    const rect = this._svgEl.getBoundingClientRect();
+    const fracX = (e.clientX - rect.left) / rect.width;
+    const fracY = (e.clientY - rect.top) / rect.height;
+    this._vb.x = svgPt.x - fracX * this._vb.w;
+    this._vb.y = svgPt.y - fracY * this._vb.h;
+
+    this._zoomLevel = this._vbInitial.w / this._vb.w;
+    this._applyViewBox();
+  }
+
+  _onPointerDown(e) {
+    this._svgEl.setPointerCapture(e.pointerId);
+    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (this._pointers.size === 1) {
+      this._lastPanPoint = { x: e.clientX, y: e.clientY };
+    } else if (this._pointers.size === 2) {
+      this._lastPanPoint = null;
+      this._lastPinchDist = null;
+      this._lastPinchMid = null;
+    }
+  }
+
+  _onPointerMove(e) {
+    if (!this._pointers.has(e.pointerId) || !this._vb) return;
+    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (this._pointers.size === 1) {
+      this._handlePan(e);
+    } else if (this._pointers.size === 2) {
+      this._handlePinch();
+    }
+  }
+
+  _onPointerUp(e) {
+    this._pointers.delete(e.pointerId);
+    if (this._pointers.size < 2) {
+      this._lastPinchDist = null;
+      this._lastPinchMid = null;
+    }
+    if (this._pointers.size === 1) {
+      const [pt] = this._pointers.values();
+      this._lastPanPoint = { x: pt.x, y: pt.y };
+    } else {
+      this._lastPanPoint = null;
+    }
+  }
+
+  _handlePan(e) {
+    if (!this._lastPanPoint) return;
+    const rect = this._svgEl.getBoundingClientRect();
+    const dx = ((this._lastPanPoint.x - e.clientX) / rect.width) * this._vb.w;
+    const dy = ((this._lastPanPoint.y - e.clientY) / rect.height) * this._vb.h;
+    this._vb.x += dx;
+    this._vb.y += dy;
+    this._lastPanPoint = { x: e.clientX, y: e.clientY };
+    this._applyViewBox();
+  }
+
+  _handlePinch() {
+    const pts = [...this._pointers.values()];
+    if (pts.length !== 2) return;
+    const [a, b] = pts;
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+
+    if (this._lastPinchDist !== null) {
+      const scaleDelta = this._lastPinchDist / dist;
+      const newZoom = this._vbInitial.w / (this._vb.w * scaleDelta);
+
+      if (newZoom >= 1 && newZoom <= 8) {
+        const svgMid = this._screenToSVG(midX, midY);
+        this._vb.w *= scaleDelta;
+        this._vb.h *= scaleDelta;
+        const rect = this._svgEl.getBoundingClientRect();
+        const fracX = (midX - rect.left) / rect.width;
+        const fracY = (midY - rect.top) / rect.height;
+        this._vb.x = svgMid.x - fracX * this._vb.w;
+        this._vb.y = svgMid.y - fracY * this._vb.h;
+        this._zoomLevel = this._vbInitial.w / this._vb.w;
+      }
+
+      const rect = this._svgEl.getBoundingClientRect();
+      const svgDx = ((this._lastPinchMid.x - midX) / rect.width) * this._vb.w;
+      const svgDy = ((this._lastPinchMid.y - midY) / rect.height) * this._vb.h;
+      this._vb.x += svgDx;
+      this._vb.y += svgDy;
+      this._applyViewBox();
+    }
+
+    this._lastPinchDist = dist;
+    this._lastPinchMid = { x: midX, y: midY };
   }
 
   getCardSize() {
