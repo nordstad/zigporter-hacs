@@ -1,7 +1,7 @@
 """Tests for config flow — validates schema and defaults."""
 
-import voluptuous as vol
 import pytest
+import voluptuous as vol
 
 from custom_components.zigporter.const import (
     BACKEND_Z2M,

@@ -13,8 +13,6 @@ Zigbee network topology map for Home Assistant. Visualize your mesh network with
 
 Supports both **Zigbee2MQTT** and **ZHA** backends.
 
-> **Early Development** — Expect breaking changes between releases. Pin to a specific version if stability matters.
-
 ## Installation
 
 ### HACS (recommended)
