@@ -14,6 +14,10 @@
         }
       }
     },
+    "error": {
+      "mqtt_not_configured": "MQTT integration is not set up. Zigbee2MQTT requires MQTT.",
+      "zha_not_configured": "ZHA integration is not set up."
+    },
     "abort": {
       "already_configured": "Zigporter is already configured."
     }

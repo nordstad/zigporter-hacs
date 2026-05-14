@@ -19,19 +19,15 @@ LABEL_OFFSET = 30
 LABEL_MARGIN = 340
 
 HOP_COLORS = [
-    "#facc15",  # yellow (hop 1)
-    "#4ade80",  # green (hop 2)
-    "#60a5fa",  # blue (hop 3)
-    "#f472b6",  # pink (hop 4)
-    "#fb923c",  # orange (hop 5)
-    "#a78bfa",  # violet (hop 6)
+    "#202940",  # dark navy
+    "#4B4038",  # dark brown
+    "#9A8678",  # warm tan
+    "#CAAA98",  # light cream
 ]
 
 NODE_R_COORD = 28
 NODE_R_ROUTER = 20
 NODE_R_END = 14
-
-BG = "#0f172a"
 
 COORD_FILL = "#f59e0b"
 ROUTER_FILL = "#0ea5e9"
@@ -45,9 +41,8 @@ EDGE_WARN = "#f59e0b"
 EDGE_CRIT = "#ef4444"
 EDGE_OPACITY = 0.55
 
-LABEL_FS = "11px"
+LABEL_FS = "12px"
 DIM_FS = "11px"
-LEGEND_FS = "11px"
 
 COLLISION_GAP = 100
 COLLISION_ITERS = 200
@@ -71,14 +66,22 @@ def _edge_width(lqi: int) -> float:
     return round(0.8 + (lqi / 255) * 2.8, 2)
 
 
-def _lerp_color(t: float, near: str, far: str) -> str:
-    """Linearly interpolate between two hex colours. t=0 -> near, t=1 -> far."""
-    r1, g1, b1 = int(near[1:3], 16), int(near[3:5], 16), int(near[5:7], 16)
-    r2, g2, b2 = int(far[1:3], 16), int(far[3:5], 16), int(far[5:7], 16)
-    r = round(r1 + (r2 - r1) * t)
-    g = round(g1 + (g2 - g1) * t)
-    b = round(b1 + (b2 - b1) * t)
-    return f"#{r:02x}{g:02x}{b:02x}"
+def _annulus_path(cx: float, cy: float, r_inner: float, r_outer: float) -> str:
+    """SVG path for a donut (annulus) shape centered at (cx, cy)."""
+    if r_inner <= 0:
+        return (
+            f"M {cx - r_outer} {cy} "
+            f"A {r_outer} {r_outer} 0 1 1 {cx + r_outer} {cy} "
+            f"A {r_outer} {r_outer} 0 1 1 {cx - r_outer} {cy} Z"
+        )
+    return (
+        f"M {cx - r_outer} {cy} "
+        f"A {r_outer} {r_outer} 0 1 1 {cx + r_outer} {cy} "
+        f"A {r_outer} {r_outer} 0 1 1 {cx - r_outer} {cy} Z "
+        f"M {cx - r_inner} {cy} "
+        f"A {r_inner} {r_inner} 0 1 0 {cx + r_inner} {cy} "
+        f"A {r_inner} {r_inner} 0 1 0 {cx - r_inner} {cy} Z"
+    )
 
 
 def _compute_ring_radii(
@@ -315,184 +318,6 @@ def _add_defs_filters(defs: ET.Element) -> None:
         ET.SubElement(merge, "feMergeNode", {"in": "SourceGraphic"})
 
 
-def _draw_legend(
-    svg: ET.Element,
-    warn_lqi: int,
-    critical_lqi: int,
-    vb_x: float = 0,
-    vb_y: float = 0,
-    vb_w: float = 800,
-    vb_h: float = 800,
-) -> None:
-    lw, lh = 300, 316
-    lx = vb_x + vb_w - lw - 20
-    ly = vb_y + vb_h - lh - 20
-    row = 24
-
-    g = ET.SubElement(svg, "g", {"id": "legend"})
-    ET.SubElement(
-        g,
-        "rect",
-        {
-            "x": str(lx),
-            "y": str(ly),
-            "width": str(lw),
-            "height": str(lh),
-            "rx": "8",
-            "fill": "#1e293b",
-            "stroke": "#334155",
-            "stroke-width": "1",
-        },
-    )
-    t = ET.SubElement(
-        g,
-        "text",
-        {
-            "x": str(lx + lw // 2),
-            "y": str(ly + 18),
-            "fill": TEXT_PRIMARY,
-            "font-size": "12px",
-            "text-anchor": "middle",
-            "font-weight": "bold",
-        },
-    )
-    t.text = "Legend"
-
-    y = ly + 42
-
-    # Node types
-    for fill, r, label in [
-        (COORD_FILL, 9, "Coordinator"),
-        (ROUTER_FILL, 7, "Router"),
-        (END_FILL, 5, "End device"),
-    ]:
-        ET.SubElement(
-            g, "circle", {"cx": str(lx + 16), "cy": str(y - 3), "r": str(r), "fill": fill}
-        )
-        txt = ET.SubElement(
-            g,
-            "text",
-            {"x": str(lx + 30), "y": str(y), "fill": TEXT_PRIMARY, "font-size": LEGEND_FS},
-        )
-        txt.text = label
-        y += row
-
-    y += 6
-
-    # Glow indicators for problem nodes
-    ET.SubElement(
-        g,
-        "circle",
-        {
-            "cx": str(lx + 16),
-            "cy": str(y - 3),
-            "r": "7",
-            "fill": ROUTER_FILL,
-            "stroke": EDGE_WARN,
-            "stroke-width": "2",
-            "filter": "url(#glow-warn)",
-        },
-    )
-    txt = ET.SubElement(
-        g, "text", {"x": str(lx + 30), "y": str(y), "fill": EDGE_WARN, "font-size": LEGEND_FS}
-    )
-    txt.text = f"Weak node  (LQI < {warn_lqi})"
-    y += row
-
-    ET.SubElement(
-        g,
-        "circle",
-        {
-            "cx": str(lx + 16),
-            "cy": str(y - 3),
-            "r": "7",
-            "fill": ROUTER_FILL,
-            "stroke": EDGE_CRIT,
-            "stroke-width": "2",
-            "filter": "url(#glow-crit)",
-        },
-    )
-    txt = ET.SubElement(
-        g, "text", {"x": str(lx + 30), "y": str(y), "fill": EDGE_CRIT, "font-size": LEGEND_FS}
-    )
-    txt.text = f"Critical node  (LQI < {critical_lqi})"
-    y += row + 6
-
-    # In-circle LQI explanation
-    ex = lx + 16
-    ey = y - 3
-    ET.SubElement(g, "circle", {"cx": str(ex), "cy": str(ey), "r": "7", "fill": ROUTER_FILL})
-    badge_w_ex = 14
-    ET.SubElement(
-        g,
-        "rect",
-        {
-            "x": str(round(ex - badge_w_ex / 2)),
-            "y": str(ey - 5),
-            "width": str(badge_w_ex),
-            "height": "10",
-            "rx": "3",
-            "fill": "#0f172a",
-            "opacity": "0.82",
-        },
-    )
-    txt = ET.SubElement(
-        g,
-        "text",
-        {
-            "x": str(ex),
-            "y": str(ey + 3),
-            "fill": EDGE_GOOD,
-            "font-size": "8px",
-            "font-weight": "bold",
-            "text-anchor": "middle",
-        },
-    )
-    txt.text = "42"
-    txt = ET.SubElement(
-        g, "text", {"x": str(lx + 30), "y": str(y), "fill": TEXT_DIM, "font-size": LEGEND_FS}
-    )
-    txt.text = "badge: ↑uplink LQI (hop 1)"
-    y += row - 8
-    txt = ET.SubElement(
-        g, "text", {"x": str(lx + 30), "y": str(y), "fill": TEXT_DIM, "font-size": LEGEND_FS}
-    )
-    txt.text = "or path-min LQI (hop 2+)"
-    y += row
-
-    # Depth-1 edge label explanation
-    txt = ET.SubElement(
-        g, "text", {"x": str(lx + 8), "y": str(y), "fill": TEXT_DIM, "font-size": LEGEND_FS}
-    )
-    txt.text = "Hop-1 edges: ↓ coord→dev  ↑ dev→coord"
-    y += row
-
-    # Edge quality
-    for color, label in [
-        (EDGE_GOOD, f"LQI ≥ {warn_lqi}  (good)"),
-        (EDGE_WARN, f"LQI {critical_lqi}–{warn_lqi}  (weak)"),
-        (EDGE_CRIT, f"LQI < {critical_lqi}  (critical)"),
-    ]:
-        ET.SubElement(
-            g,
-            "line",
-            {
-                "x1": str(lx + 8),
-                "y1": str(y - 4),
-                "x2": str(lx + 26),
-                "y2": str(y - 4),
-                "stroke": color,
-                "stroke-width": "2",
-            },
-        )
-        txt = ET.SubElement(
-            g,
-            "text",
-            {"x": str(lx + 32), "y": str(y), "fill": TEXT_PRIMARY, "font-size": LEGEND_FS},
-        )
-        txt.text = label
-        y += row - 4
-
 
 def _draw_node(
     svg: ET.Element,
@@ -609,8 +434,8 @@ def _draw_node(
             "width": str(pill_w),
             "height": str(pill_h),
             "rx": "5",
-            "fill": "#0f172a",
-            "opacity": "0.7",
+            "fill": "black",
+            "opacity": "0.6",
         },
     )
 
@@ -623,6 +448,10 @@ def _draw_node(
             "fill": TEXT_PRIMARY,
             "font-size": LABEL_FS,
             "text-anchor": anchor,
+            "stroke": "black",
+            "stroke-width": "3",
+            "stroke-opacity": "0.5",
+            "paint-order": "stroke",
         },
     )
     lbl.text = display_name
@@ -787,41 +616,27 @@ def render_svg(
     defs = ET.SubElement(svg, "defs")
     _add_defs_filters(defs)
 
-    # Background
-    ET.SubElement(
-        svg,
-        "rect",
-        {"x": str(vb_x1), "y": str(vb_y1), "width": str(vb_w), "height": str(vb_h), "fill": BG},
-    )
-
-    # Ring band fills (outermost -> innermost so each disc overwrites its interior)
+    # Ring band fills (donut paths, color-coded by hop)
     ring_fill_group = ET.SubElement(svg, "g", {"id": "ring-fills"})
-    for h in range(max_hops, 0, -1):
-        t_val = (h - 1) / max(max_hops - 1, 1)
-        band_fill = _lerp_color(t_val, "#0d2420", "#201018")
+    for h in range(1, max_hops + 1):
+        r_inner = ring_radii.get(h - 1, 0.0) if h > 1 else 0.0
+        r_outer = ring_radii[h]
+        hop_color = HOP_COLORS[(h - 1) % len(HOP_COLORS)]
         ET.SubElement(
             ring_fill_group,
-            "circle",
+            "path",
             {
-                "cx": str(cx),
-                "cy": str(cy),
-                "r": str(round(ring_radii[h], 1)),
-                "fill": band_fill,
+                "d": _annulus_path(cx, cy, r_inner, r_outer),
+                "fill": hop_color,
+                "fill-opacity": "0.80",
+                "fill-rule": "evenodd",
                 "stroke": "none",
             },
         )
-    # Restore the coordinator centre area to background
-    ET.SubElement(
-        ring_fill_group,
-        "circle",
-        {"cx": str(cx), "cy": str(cy), "r": str(NODE_R_COORD + 10), "fill": BG, "stroke": "none"},
-    )
 
     # Ring guides
     ring_group = ET.SubElement(svg, "g", {"id": "rings"})
     for h in range(1, max_hops + 1):
-        t_val = (h - 1) / max(max_hops - 1, 1)
-        ring_stroke = _lerp_color(t_val, "#1e4035", "#3d1e2e")
         ring_label_c = HOP_COLORS[(h - 1) % len(HOP_COLORS)]
         ring_r = ring_radii[h]
         ET.SubElement(
@@ -832,7 +647,8 @@ def render_svg(
                 "cy": str(cy),
                 "r": str(round(ring_r, 1)),
                 "fill": "none",
-                "stroke": ring_stroke,
+                "stroke": ring_label_c,
+                "stroke-opacity": "0.3",
                 "stroke-width": "1",
                 "stroke-dasharray": "5,4",
             },
@@ -843,11 +659,15 @@ def render_svg(
             {
                 "x": str(cx),
                 "y": str(round(cy - ring_r + 14, 1)),
-                "fill": ring_label_c,
-                "font-size": "12px",
+                "fill": TEXT_PRIMARY,
+                "font-size": "16px",
                 "text-anchor": "middle",
                 "font-weight": "bold",
                 "letter-spacing": "0.5",
+                "stroke": "black",
+                "stroke-width": "3",
+                "stroke-opacity": "0.6",
+                "paint-order": "stroke",
             },
         )
         txt.text = f"Hop {h}"
@@ -934,8 +754,5 @@ def render_svg(
             warn_lqi,
             critical_lqi,
         )
-
-    # Legend
-    _draw_legend(svg, warn_lqi, critical_lqi, vb_x=vb_x1, vb_y=vb_y1, vb_w=vb_w, vb_h=vb_h)
 
     return ET.tostring(svg, encoding="unicode")

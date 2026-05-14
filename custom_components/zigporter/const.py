@@ -13,8 +13,7 @@ DEFAULT_MQTT_TOPIC = "zigbee2mqtt"
 DEFAULT_WARN_LQI = 50
 DEFAULT_CRITICAL_LQI = 20
 DEFAULT_CACHE_TTL = 0  # 0 = manual refresh only (never auto-expire)
-DEFAULT_SCAN_TIMEOUT = 180
+DEFAULT_SCAN_TIMEOUT = 300
 
 BACKEND_Z2M = "zigbee2mqtt"
 BACKEND_ZHA = "zha"
-BACKEND_AUTO = "auto"

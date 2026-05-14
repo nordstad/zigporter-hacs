@@ -8,7 +8,6 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
-    BACKEND_AUTO,
     BACKEND_Z2M,
     BACKEND_ZHA,
     CONF_BACKEND,
@@ -36,14 +35,21 @@ class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(DOMAIN)
         self._abort_if_unique_id_configured()
 
+        errors: dict[str, str] = {}
+
         if user_input is not None:
-            return self.async_create_entry(title="Zigporter", data=user_input)
+            backend = user_input[CONF_BACKEND]
+            if backend == BACKEND_Z2M and not self.hass.config_entries.async_entries("mqtt"):
+                errors["base"] = "mqtt_not_configured"
+            elif backend == BACKEND_ZHA and not self.hass.config_entries.async_entries("zha"):
+                errors["base"] = "zha_not_configured"
+            else:
+                return self.async_create_entry(title="Zigporter", data=user_input)
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_BACKEND, default=BACKEND_AUTO): vol.In(
+                vol.Required(CONF_BACKEND): vol.In(
                     {
-                        BACKEND_AUTO: "Auto-detect",
                         BACKEND_Z2M: "Zigbee2MQTT",
                         BACKEND_ZHA: "ZHA",
                     }
@@ -51,7 +57,7 @@ class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_MQTT_TOPIC, default=DEFAULT_MQTT_TOPIC): str,
             }
         )
-        return self.async_show_form(step_id="user", data_schema=schema)
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
     @staticmethod
     @callback

@@ -12,7 +12,6 @@ from homeassistant.components import mqtt, websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
-    BACKEND_AUTO,
     BACKEND_Z2M,
     BACKEND_ZHA,
     CONF_BACKEND,
@@ -75,11 +74,11 @@ async def ws_network_map(
             connection.send_result(msg["id"], cache_data["cache"])
             return
 
-    backend = entry.data.get(CONF_BACKEND, BACKEND_AUTO)
-    resolved = _resolve_backend(hass, backend)
+    backend = entry.data.get(CONF_BACKEND)
+    resolved = _resolve_backend(backend)
 
     if resolved is None:
-        connection.send_error(msg["id"], "no_backend", "No Zigbee backend (Z2M or ZHA) found")
+        connection.send_error(msg["id"], "no_backend", "No Zigbee backend configured")
         return
 
     start = time.monotonic()
@@ -157,18 +156,10 @@ def _get_config_entry(hass: HomeAssistant):
     return entries[0] if entries else None
 
 
-def _resolve_backend(hass: HomeAssistant, backend: str) -> str | None:
+def _resolve_backend(backend: str | None) -> str | None:
     """Resolve which backend to use."""
-    if backend == BACKEND_Z2M:
-        return BACKEND_Z2M
-    if backend == BACKEND_ZHA:
-        return BACKEND_ZHA
-
-    # ZHA is reliably detectable; MQTT presence alone doesn't mean Z2M is active
-    if hass.config_entries.async_entries("zha"):
-        return BACKEND_ZHA
-    if hass.config_entries.async_entries("mqtt"):
-        return BACKEND_Z2M
+    if backend in (BACKEND_Z2M, BACKEND_ZHA):
+        return backend
     return None
 
 

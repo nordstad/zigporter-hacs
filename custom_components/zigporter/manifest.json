@@ -4,7 +4,7 @@
   "after_dependencies": ["mqtt", "zha"],
   "codeowners": ["@nordstad"],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["frontend"],
   "documentation": "https://github.com/nordstad/zigporter-hacs",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/nordstad/zigporter-hacs/issues",

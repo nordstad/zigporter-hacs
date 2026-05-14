@@ -1,7 +1,6 @@
 """Tests for config flow — validates schema and defaults."""
 
 from custom_components.zigporter.const import (
-    BACKEND_AUTO,
     BACKEND_Z2M,
     BACKEND_ZHA,
     CONF_BACKEND,
@@ -18,7 +17,6 @@ from custom_components.zigporter.const import (
 
 class TestConfigFlowConstants:
     def test_backend_values(self):
-        assert BACKEND_AUTO == "auto"
         assert BACKEND_Z2M == "zigbee2mqtt"
         assert BACKEND_ZHA == "zha"
 

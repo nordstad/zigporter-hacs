@@ -27,17 +27,9 @@ Custom Home Assistant integration (HACS) that renders a radial Zigbee network ma
 uv run pytest tests/ -v          # 23 tests
 ```
 
-## Deployment to HA
+## Deployment
 
-HA runs in Proxmox VM at 192.168.3.81. SSH port goes to Traefik host (wrong machine), not HA.
-
-**Working method**: Copy files via Studio Code Server addon (direct filesystem access to `/config/`).
-
-After deploying changes:
-
-1. Delete `/config/zigporter/network_map_cache.json` if SVG renderer changed
-2. Restart HA
-3. Clear browser site data (if JS was cached with old `cache_headers=True`)
+See project memory for deployment details (private, not in repo).
 
 ## Gotchas
 

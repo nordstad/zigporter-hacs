@@ -1,94 +1,94 @@
-# Zigporter — HACS Integration
+# Zigporter
 
-> **Early Development** — This integration is under active development and is not yet stable. Expect breaking changes, bugs, and incomplete features. Use at your own risk.
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![GitHub Release](https://img.shields.io/github/v/release/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/releases)
+[![Validate](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml/badge.svg)](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/github/license/nordstad/zigporter-hacs)](LICENSE)
+
+<p align="center">
+  <img src="images/zigporter_logo_small.png" alt="Zigporter" width="128">
+</p>
 
 Zigbee network topology map for Home Assistant. Visualize your mesh network with LQI signal quality indicators, routing paths, and device hierarchy.
 
 Supports both **Zigbee2MQTT** and **ZHA** backends.
 
+> **Early Development** — Expect breaking changes between releases. Pin to a specific version if stability matters.
+
 ## Installation
 
 ### HACS (recommended)
 
-1. Open HACS in Home Assistant.
-2. Click the three dots menu → **Custom repositories**.
-3. Add `nordstad/zigporter-hacs` with type **Integration**.
-4. Search for "Zigporter" and install.
-5. Restart Home Assistant.
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=nordstad&repository=zigporter-hacs&category=integration)
+
+Or manually:
+
+1. Open HACS → three dots menu → **Custom repositories**.
+2. Add `nordstad/zigporter-hacs` with type **Integration**.
+3. Search for "Zigporter" and install.
+4. Restart Home Assistant.
 
 ### Manual
 
-Copy the `custom_components/zigporter/` folder to your HA `config/custom_components/` directory and restart.
+Copy `custom_components/zigporter/` to your HA `config/custom_components/` directory and restart.
 
 ## Setup
 
-1. Go to **Settings → Devices & Services → Add Integration**.
-2. Search for "Zigporter".
-3. Select your Zigbee backend (Auto-detect, Zigbee2MQTT, or ZHA).
-4. If using Zigbee2MQTT, confirm the MQTT topic prefix (default: `zigbee2mqtt`).
+1. **Settings → Devices & Services → Add Integration** → search "Zigporter".
+2. Select your Zigbee backend (**Zigbee2MQTT** or **ZHA**).
+3. If using Zigbee2MQTT, confirm the MQTT topic prefix (default: `zigbee2mqtt`).
 
 ### Options
 
-After setup, click **Configure** on the Zigporter integration to adjust:
+Click **Configure** on the integration to adjust:
 
-- **Warning LQI threshold** (default: 50) — links below this show yellow.
-- **Critical LQI threshold** (default: 20) — links below this show red.
-- **Cache TTL** (default: 300s) — how long to cache the map before re-scanning.
+| Option | Default | Description |
+|--------|---------|-------------|
+| Warning LQI | 50 | Links below this show yellow |
+| Critical LQI | 20 | Links below this show red |
+| Scan timeout | 180s | Max wait for network scan (Z2M can take 60–70s for ~50 devices) |
 
 ## Dashboard Card
 
-### Add the resource
+The card JS is registered automatically — no manual resource setup needed.
 
-Go to **Settings → Dashboards → Resources** (top right three dots menu) and add:
-
-- **URL:** `/zigporter/zigporter-network-map-card.js`
-- **Type:** JavaScript Module
-
-### Add the card
-
-Add a manual card to your dashboard:
+Add a card to your dashboard:
 
 ```yaml
 type: custom:zigporter-network-map-card
-```
-
-### Card options
-
-```yaml
-type: custom:zigporter-network-map-card
-title: Zigbee Network Map
-show_stats: true
-auto_refresh_interval: 60
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `title` | Zigbee Network Map | Card header text |
-| `show_stats` | `true` | Show device count, max depth, and scan duration |
-| `auto_refresh_interval` | `0` (disabled) | Auto-refresh interval in seconds |
+| `show_stats` | `true` | Show device count, hops, and scan duration |
 
-Click the refresh button on the card to force a fresh network scan (bypasses cache).
+## How It Works
 
-## How it works
+The integration requests a network topology scan from your Zigbee backend, builds a routing tree using bidirectional LQI for best-path parent selection, renders it as a radial SVG, and delivers it to the card via WebSocket.
 
-The integration requests a network topology scan from your Zigbee backend:
-
-- **Zigbee2MQTT:** Publishes to `zigbee2mqtt/bridge/request/networkmap` via MQTT and parses the response. The scan takes 10–60 seconds depending on network size.
-- **ZHA:** Reads the device list and neighbor tables from ZHA's gateway. Falls back to a flat topology if no neighbor scan data is available.
-
-The topology is processed into a routing tree (best-path parent selection using bidirectional LQI), rendered as an SVG, and delivered to the card via WebSocket.
+- **Zigbee2MQTT** — publishes to `zigbee2mqtt/bridge/request/networkmap` via MQTT
+- **ZHA** — reads device list and neighbor tables from the ZHA gateway
 
 ## Limitations
 
-- ZHA maps are less detailed than Z2M maps — ZHA may not have routing path data, resulting in a flat or approximate topology.
-- The first scan after HA restart may take longer as the Zigbee coordinator queries each device.
-- Very large networks (100+ devices) may produce large SVGs — use the cache TTL to avoid repeated scans.
+- ZHA maps may lack routing data, producing a flat topology.
+- First scan after HA restart can be slow (coordinator queries each device).
+- Very large networks (100+ devices) produce large SVGs — the cache avoids repeated scans.
 
-## Links
+## Related: Zigporter CLI
 
-- [Zigporter CLI](https://github.com/nordstad/zigporter)
-- [Zigporter docs](https://nordstad.github.io/zigporter/)
+This HACS integration is the Home Assistant-native companion to [**Zigporter CLI**](https://github.com/nordstad/zigporter) — a terminal tool for managing your Zigbee network:
+
+- **Migrate** devices between ZHA and Zigbee2MQTT (both directions) with automated entity/dashboard cascade
+- **Rename** devices and entities with full HA reference updates (automations, scripts, dashboards)
+- **Network map** — the same radial SVG visualization, exported as a standalone file
+- **Stale device cleanup** — find and remove offline/ghost devices
+
+Install via `uv tool install zigporter`, `pip install zigporter`, or `brew tap nordstad/zigporter && brew install zigporter`.
+
+[Documentation](https://nordstad.github.io/zigporter/) · [Interactive demo](https://nordstad.github.io/zigporter/interactive-demo/)
 
 ## License
 
-MIT
+[MIT](LICENSE)

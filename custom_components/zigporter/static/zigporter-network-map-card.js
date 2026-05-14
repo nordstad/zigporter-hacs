@@ -49,6 +49,13 @@ class ZigporterNetworkMapCard extends HTMLElement {
       .map-container { width: 100%; }
       .map-container svg { width: 100%; height: calc(100vh - 140px); display: block; cursor: grab; touch-action: none; }
       .map-container svg:active { cursor: grabbing; }
+      .legend { display: flex; flex-wrap: wrap; gap: 16px 32px; padding: 10px 16px; font-size: 13px; color: var(--secondary-text-color); border-top: 1px solid var(--divider-color, #333); }
+      .legend-section { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+      .legend-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+      .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+      .legend-dot.warn { box-shadow: 0 0 4px #f59e0b; border: 1.5px solid #f59e0b; }
+      .legend-dot.crit { box-shadow: 0 0 4px #ef4444; border: 1.5px solid #ef4444; }
+      .legend-line { width: 18px; height: 2px; flex-shrink: 0; border-radius: 1px; }
       .status { padding: 48px 24px; text-align: center; color: var(--secondary-text-color); }
       .error { color: var(--error-color); }
       .spinner {
@@ -118,8 +125,63 @@ class ZigporterNetworkMapCard extends HTMLElement {
     loading.appendChild(timer);
     mapContainer.appendChild(loading);
 
+    const legend = document.createElement("div");
+    legend.className = "legend";
+
+    const nodeSection = document.createElement("div");
+    nodeSection.className = "legend-section";
+    const edgeSection = document.createElement("div");
+    edgeSection.className = "legend-section";
+
+    const nodeItems = [
+      { color: "#f59e0b", label: "Coordinator", cls: "" },
+      { color: "#0ea5e9", label: "Router", cls: "" },
+      { color: "#475569", label: "End device", cls: "" },
+      { color: "#0ea5e9", label: "Weak (<50)", cls: "warn" },
+      { color: "#0ea5e9", label: "Critical (<20)", cls: "crit" },
+    ];
+    for (const item of nodeItems) {
+      const span = document.createElement("span");
+      span.className = "legend-item";
+      const dot = document.createElement("span");
+      dot.className = "legend-dot" + (item.cls ? " " + item.cls : "");
+      dot.style.background = item.color;
+      const text = document.createElement("span");
+      text.textContent = item.label;
+      span.appendChild(dot);
+      span.appendChild(text);
+      nodeSection.appendChild(span);
+    }
+
+    const edgeItems = [
+      { color: "#22c55e", label: "LQI ≥ 50" },
+      { color: "#f59e0b", label: "LQI 20–50" },
+      { color: "#ef4444", label: "LQI < 20" },
+    ];
+    for (const item of edgeItems) {
+      const span = document.createElement("span");
+      span.className = "legend-item";
+      const line = document.createElement("span");
+      line.className = "legend-line";
+      line.style.background = item.color;
+      const text = document.createElement("span");
+      text.textContent = item.label;
+      span.appendChild(line);
+      span.appendChild(text);
+      edgeSection.appendChild(span);
+    }
+    const badgeNote = document.createElement("span");
+    badgeNote.className = "legend-item";
+    badgeNote.style.opacity = "0.7";
+    badgeNote.textContent = "Badge = path-min LQI";
+    edgeSection.appendChild(badgeNote);
+
+    legend.appendChild(nodeSection);
+    legend.appendChild(edgeSection);
+
     card.appendChild(header);
     card.appendChild(stats);
+    card.appendChild(legend);
     card.appendChild(mapContainer);
 
     this.shadowRoot.textContent = "";
@@ -144,10 +206,18 @@ class ZigporterNetworkMapCard extends HTMLElement {
     spinner.className = "spinner";
     const msg = document.createElement("div");
     msg.textContent = "Scanning network\u2026";
+    const hint = document.createElement("div");
+    hint.className = "timer";
+    hint.textContent = "This typically takes 1\u20134 minutes depending on network size. Timeout can be increased in integration options.";
+    const zoomHint = document.createElement("div");
+    zoomHint.className = "timer";
+    zoomHint.textContent = "Scroll to zoom, drag to pan. On mobile: pinch to zoom. Use Reset to restore view.";
     const timerDiv = document.createElement("div");
     timerDiv.className = "timer";
     statusDiv.appendChild(spinner);
     statusDiv.appendChild(msg);
+    statusDiv.appendChild(hint);
+    statusDiv.appendChild(zoomHint);
     statusDiv.appendChild(timerDiv);
     mapEl.appendChild(statusDiv);
 
