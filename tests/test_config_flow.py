@@ -26,7 +26,7 @@ class TestConfigFlowConstants:
         assert DEFAULT_MQTT_TOPIC == "zigbee2mqtt"
         assert DEFAULT_WARN_LQI == 50
         assert DEFAULT_CRITICAL_LQI == 20
-        assert DEFAULT_CACHE_TTL == 300
+        assert DEFAULT_CACHE_TTL == 0
 
     def test_config_keys_are_strings(self):
         for key in [

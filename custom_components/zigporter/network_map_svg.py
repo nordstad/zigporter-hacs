@@ -317,12 +317,16 @@ def _add_defs_filters(defs: ET.Element) -> None:
 
 def _draw_legend(
     svg: ET.Element,
-    canvas: int,
     warn_lqi: int,
     critical_lqi: int,
+    vb_x: float = 0,
+    vb_y: float = 0,
+    vb_w: float = 800,
+    vb_h: float = 800,
 ) -> None:
-    lx, ly = 20, 20
     lw, lh = 300, 316
+    lx = vb_x + vb_w - lw - 20
+    ly = vb_y + vb_h - lh - 20
     row = 24
 
     g = ET.SubElement(svg, "g", {"id": "legend"})
@@ -760,13 +764,21 @@ def render_svg(
     cx, cy = layout.cx, layout.cy
     max_hops = layout.max_hops
 
+    # ── Compute viewBox encompassing the outermost ring circle ──────────────
+    outer_r = ring_radii[max_hops] + LABEL_MARGIN
+    vb_x1 = cx - outer_r
+    vb_y1 = cy - outer_r
+    vb_w = 2 * outer_r
+    vb_h = 2 * outer_r
+
     # ── Drawing ───────────────────────────────────────────────────────────────
     svg = ET.Element(
         "svg",
         {
             "xmlns": "http://www.w3.org/2000/svg",
-            "width": str(canvas),
-            "height": str(canvas),
+            "viewBox": f"{vb_x1} {vb_y1} {vb_w} {vb_h}",
+            "width": str(int(vb_w)),
+            "height": str(int(vb_h)),
             "font-family": "system-ui, -apple-system, sans-serif",
         },
     )
@@ -777,7 +789,9 @@ def render_svg(
 
     # Background
     ET.SubElement(
-        svg, "rect", {"x": "0", "y": "0", "width": str(canvas), "height": str(canvas), "fill": BG}
+        svg,
+        "rect",
+        {"x": str(vb_x1), "y": str(vb_y1), "width": str(vb_w), "height": str(vb_h), "fill": BG},
     )
 
     # Ring band fills (outermost -> innermost so each disc overwrites its interior)
@@ -922,6 +936,6 @@ def render_svg(
         )
 
     # Legend
-    _draw_legend(svg, canvas, warn_lqi, critical_lqi)
+    _draw_legend(svg, warn_lqi, critical_lqi, vb_x=vb_x1, vb_y=vb_y1, vb_w=vb_w, vb_h=vb_h)
 
     return ET.tostring(svg, encoding="unicode")

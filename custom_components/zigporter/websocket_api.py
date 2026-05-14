@@ -1,7 +1,10 @@
 """WebSocket API for Zigporter — serves the network map SVG."""
 
 import asyncio
+import json
+import logging
 import time
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
@@ -29,6 +32,8 @@ from .network_map import (
     build_zha_topology_from_devices,
 )
 from .network_map_svg import render_svg
+
+_LOGGER = logging.getLogger(__name__)
 
 SCAN_TIMEOUT = 120
 
@@ -62,6 +67,9 @@ async def ws_network_map(
     cache_ttl = entry.options.get(CONF_CACHE_TTL, DEFAULT_CACHE_TTL)
 
     if not force_refresh and cache_data.get("cache") is not None:
+        if cache_ttl <= 0:
+            connection.send_result(msg["id"], cache_data["cache"])
+            return
         cache_age = time.monotonic() - (cache_data.get("cache_time") or 0)
         if cache_age < cache_ttl:
             connection.send_result(msg["id"], cache_data["cache"])
@@ -121,7 +129,21 @@ async def ws_network_map(
     hass.data[DOMAIN][entry.entry_id]["cache"] = result
     hass.data[DOMAIN][entry.entry_id]["cache_time"] = time.monotonic()
 
+    cache_path = hass.data[DOMAIN][entry.entry_id].get("cache_path")
+    if cache_path:
+        try:
+            await hass.async_add_executor_job(_save_cache, cache_path, result)
+        except OSError:
+            _LOGGER.warning("Failed to save network map cache to %s", cache_path)
+
     connection.send_result(msg["id"], result)
+
+
+def _save_cache(path: str, data: dict) -> None:
+    """Write cache data to disk."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data))
 
 
 def _get_config_entry(hass: HomeAssistant):
@@ -137,13 +159,11 @@ def _resolve_backend(hass: HomeAssistant, backend: str) -> str | None:
     if backend == BACKEND_ZHA:
         return BACKEND_ZHA
 
-    has_z2m = bool(hass.config_entries.async_entries("mqtt"))
-    has_zha = bool(hass.config_entries.async_entries("zha"))
-
-    if has_z2m:
-        return BACKEND_Z2M
-    if has_zha:
+    # ZHA is reliably detectable; MQTT presence alone doesn't mean Z2M is active
+    if hass.config_entries.async_entries("zha"):
         return BACKEND_ZHA
+    if hass.config_entries.async_entries("mqtt"):
+        return BACKEND_Z2M
     return None
 
 

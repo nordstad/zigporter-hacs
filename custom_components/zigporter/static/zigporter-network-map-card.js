@@ -11,18 +11,7 @@ class ZigporterNetworkMapCard extends HTMLElement {
     this._config = {
       title: config.title || "Zigbee Network Map",
       show_stats: config.show_stats !== false,
-      auto_refresh_interval: config.auto_refresh_interval || 0,
     };
-    if (this._refreshTimer) {
-      clearInterval(this._refreshTimer);
-      this._refreshTimer = null;
-    }
-    if (this._config.auto_refresh_interval > 0) {
-      this._refreshTimer = setInterval(
-        () => this._fetchMap(false),
-        this._config.auto_refresh_interval * 1000
-      );
-    }
   }
 
   set hass(hass) {
@@ -43,17 +32,27 @@ class ZigporterNetworkMapCard extends HTMLElement {
 
     const style = document.createElement("style");
     style.textContent = `
-      :host { display: block; height: 100%; }
-      ha-card { overflow: hidden; height: 100%; display: flex; flex-direction: column; }
-      .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 0; flex-shrink: 0; }
+      :host { display: block; }
+      ha-card { overflow: hidden; }
+      .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 0; }
       .header h2 { margin: 0; font-size: 16px; font-weight: 500; }
-      .stats { padding: 0 16px; font-size: 12px; color: var(--secondary-text-color); flex-shrink: 0; }
-      .map-container { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
-      .map-container svg { max-width: 100%; max-height: 100%; display: block; }
-      .loading { padding: 24px; text-align: center; color: var(--secondary-text-color); }
-      .error { padding: 16px; color: var(--error-color); }
-      button { background: none; border: none; cursor: pointer; color: var(--primary-color); padding: 8px; font-size: 18px; }
-      button:hover { opacity: 0.8; }
+      .stats { padding: 0 16px 4px; font-size: 12px; color: var(--secondary-text-color); }
+      .map-container { width: 100%; }
+      .map-container svg { width: 100%; height: calc(100vh - 140px); display: block; }
+      .status { padding: 48px 24px; text-align: center; color: var(--secondary-text-color); }
+      .error { color: var(--error-color); }
+      .spinner {
+        width: 32px; height: 32px; margin: 0 auto 16px;
+        border: 3px solid var(--divider-color, #444);
+        border-top-color: var(--primary-color);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .timer { font-size: 12px; margin-top: 8px; opacity: 0.7; }
+      .refresh-btn { background: none; border: none; cursor: pointer; color: var(--primary-color); padding: 8px; font-size: 18px; }
+      .refresh-btn:hover { opacity: 0.8; }
+      .refresh-btn:disabled { opacity: 0.3; cursor: default; }
     `;
 
     const header = document.createElement("div");
@@ -63,8 +62,9 @@ class ZigporterNetworkMapCard extends HTMLElement {
     title.textContent = this._config.title;
 
     const refreshBtn = document.createElement("button");
+    refreshBtn.className = "refresh-btn";
     refreshBtn.textContent = "↻";
-    refreshBtn.title = "Refresh";
+    refreshBtn.title = "Refresh network scan";
     refreshBtn.addEventListener("click", () => this._fetchMap(true));
 
     header.appendChild(title);
@@ -79,8 +79,17 @@ class ZigporterNetworkMapCard extends HTMLElement {
     mapContainer.id = "map";
 
     const loading = document.createElement("div");
-    loading.className = "loading";
-    loading.textContent = "Loading network map...";
+    loading.className = "status";
+    const spinner = document.createElement("div");
+    spinner.className = "spinner";
+    const loadMsg = document.createElement("div");
+    loadMsg.textContent = "Scanning network\u2026";
+    const timer = document.createElement("div");
+    timer.className = "timer";
+    timer.id = "timer";
+    loading.appendChild(spinner);
+    loading.appendChild(loadMsg);
+    loading.appendChild(timer);
     mapContainer.appendChild(loading);
 
     card.appendChild(header);
@@ -97,12 +106,38 @@ class ZigporterNetworkMapCard extends HTMLElement {
 
     const mapEl = this.shadowRoot.getElementById("map");
     const statsEl = this.shadowRoot.getElementById("stats");
+    const btn = this.shadowRoot.querySelector(".refresh-btn");
+
+    if (btn) btn.disabled = true;
+
+    // Show loading state with spinner and elapsed timer
+    mapEl.textContent = "";
+    const statusDiv = document.createElement("div");
+    statusDiv.className = "status";
+    const spinner = document.createElement("div");
+    spinner.className = "spinner";
+    const msg = document.createElement("div");
+    msg.textContent = "Scanning network\u2026";
+    const timerDiv = document.createElement("div");
+    timerDiv.className = "timer";
+    statusDiv.appendChild(spinner);
+    statusDiv.appendChild(msg);
+    statusDiv.appendChild(timerDiv);
+    mapEl.appendChild(statusDiv);
+
+    const startTime = Date.now();
+    const timerInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      timerDiv.textContent = elapsed + "s elapsed";
+    }, 1000);
 
     try {
       const result = await this._hass.callWS({
         type: "zigporter/network_map",
         force_refresh: forceRefresh,
       });
+
+      clearInterval(timerInterval);
 
       const parser = new DOMParser();
       const doc = parser.parseFromString(result.svg, "image/svg+xml");
@@ -111,12 +146,22 @@ class ZigporterNetworkMapCard extends HTMLElement {
       if (svgEl.nodeName === "parsererror" || svgEl.querySelector("parsererror")) {
         mapEl.textContent = "";
         const errDiv = document.createElement("div");
-        errDiv.className = "error";
-        errDiv.textContent = "Failed to parse SVG";
+        errDiv.className = "status";
+        const errMsg = document.createElement("div");
+        errMsg.className = "error";
+        errMsg.textContent = "Failed to parse SVG";
+        errDiv.appendChild(errMsg);
         mapEl.appendChild(errDiv);
         return;
       }
 
+      // Synthesize viewBox from pixel dimensions before stripping them so the
+      // SVG scales correctly without a fixed size.
+      if (!svgEl.getAttribute("viewBox")) {
+        const w = svgEl.getAttribute("width");
+        const h = svgEl.getAttribute("height");
+        if (w && h) svgEl.setAttribute("viewBox", "0 0 " + w + " " + h);
+      }
       svgEl.removeAttribute("width");
       svgEl.removeAttribute("height");
       svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
@@ -126,16 +171,27 @@ class ZigporterNetworkMapCard extends HTMLElement {
 
       if (this._config.show_stats && statsEl) {
         const duration = result.scan_duration_ms < 1000
-          ? `${result.scan_duration_ms}ms`
-          : `${(result.scan_duration_ms / 1000).toFixed(1)}s`;
-        statsEl.textContent = `${result.device_count} devices · ${result.max_depth} hops · ${duration}`;
+          ? result.scan_duration_ms + "ms"
+          : (result.scan_duration_ms / 1000).toFixed(1) + "s";
+        statsEl.textContent = result.device_count + " devices \u00b7 " + result.max_depth + " hops \u00b7 " + duration;
       }
     } catch (err) {
+      clearInterval(timerInterval);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       mapEl.textContent = "";
       const errDiv = document.createElement("div");
-      errDiv.className = "error";
-      errDiv.textContent = err.message || "Failed to load map";
+      errDiv.className = "status";
+      const errMsg = document.createElement("div");
+      errMsg.className = "error";
+      errMsg.textContent = err.message || "Failed to load map";
+      const errTimer = document.createElement("div");
+      errTimer.className = "timer";
+      errTimer.textContent = "after " + elapsed + "s";
+      errDiv.appendChild(errMsg);
+      errDiv.appendChild(errTimer);
       mapEl.appendChild(errDiv);
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 

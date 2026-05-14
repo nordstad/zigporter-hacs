@@ -219,3 +219,5 @@ __marimo__/
 
 # Internal planning docs
 hacs-plan/
+
+.mcp.json

@@ -1,10 +1,10 @@
 {
   "domain": "zigporter",
   "name": "Zigporter",
-  "after_dependencies": ["zha"],
+  "after_dependencies": ["mqtt", "zha"],
   "codeowners": ["@nordstad"],
   "config_flow": true,
-  "dependencies": ["mqtt"],
+  "dependencies": [],
   "documentation": "https://github.com/nordstad/zigporter-hacs",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/nordstad/zigporter-hacs/issues",
