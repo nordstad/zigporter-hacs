@@ -8,15 +8,12 @@ class ZigporterNetworkMapCard extends HTMLElement {
   _lastPinchDist = null;
   _lastPinchMid = null;
 
-  static getConfigElement() {
-    return document.createElement("zigporter-network-map-card-editor");
-  }
-
   static getStubConfig() {
     return { title: "Zigbee Network Map", show_stats: true };
   }
 
   setConfig(config) {
+    if (!config) config = {};
     this._config = {
       title: config.title || "Zigbee Network Map",
       show_stats: config.show_stats !== false,
@@ -208,6 +205,19 @@ class ZigporterNetworkMapCard extends HTMLElement {
 
     btns.forEach((b) => (b.disabled = true));
 
+    // Check if a scan is already in progress to set correct timer offset
+    let timerOffset = 0;
+    if (!forceRefresh) {
+      try {
+        const status = await this._hass.callWS({ type: "zigporter/scan_status" });
+        if (status.scanning && status.scan_start_utc) {
+          timerOffset = Math.floor((Date.now() - new Date(status.scan_start_utc).getTime()) / 1000);
+        } else if (!status.scanning) {
+          // No scan running and not force \u2014 will serve cache, skip spinner
+        }
+      } catch (_) { /* ignore */ }
+    }
+
     // Show loading state with spinner and elapsed timer
     mapEl.textContent = "";
     const statusDiv = document.createElement("div");
@@ -224,6 +234,7 @@ class ZigporterNetworkMapCard extends HTMLElement {
     zoomHint.textContent = "Scroll to zoom, drag to pan. On mobile: pinch to zoom. Use Reset to restore view.";
     const timerDiv = document.createElement("div");
     timerDiv.className = "timer";
+    if (timerOffset > 0) timerDiv.textContent = timerOffset + "s elapsed";
     statusDiv.appendChild(spinner);
     statusDiv.appendChild(msg);
     statusDiv.appendChild(hint);
@@ -231,7 +242,7 @@ class ZigporterNetworkMapCard extends HTMLElement {
     statusDiv.appendChild(timerDiv);
     mapEl.appendChild(statusDiv);
 
-    const startTime = Date.now();
+    const startTime = Date.now() - (timerOffset * 1000);
     const timerInterval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       timerDiv.textContent = elapsed + "s elapsed";
@@ -479,3 +490,4 @@ if (!window.customCards.some((c) => c.type === "zigporter-network-map-card")) {
     description: "Visualize your Zigbee mesh network topology",
   });
 }
+

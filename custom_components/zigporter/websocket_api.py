@@ -48,6 +48,29 @@ _LOGGER = logging.getLogger(__name__)
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register WebSocket commands."""
     websocket_api.async_register_command(hass, ws_network_map)
+    websocket_api.async_register_command(hass, ws_scan_status)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "zigporter/scan_status"})
+@websocket_api.async_response
+async def ws_scan_status(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return whether a scan is currently in progress."""
+    entry = _get_config_entry(hass)
+    if entry is None:
+        connection.send_result(msg["id"], {"scanning": False})
+        return
+
+    cache_data = hass.data[DOMAIN].get(entry.entry_id, {})
+    scan_task: asyncio.Task | None = cache_data.get("scan_task")
+    scanning = scan_task is not None and not scan_task.done()
+    result: dict[str, Any] = {"scanning": scanning}
+    if scanning:
+        result["scan_start_utc"] = cache_data.get("scan_start_utc")
+    connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command(
@@ -72,6 +95,18 @@ async def ws_network_map(
     cache_data = hass.data[DOMAIN].get(entry.entry_id, {})
     cache_ttl = entry.options.get(CONF_CACHE_TTL, DEFAULT_CACHE_TTL)
 
+    # Join an in-flight scan if one is running (regardless of force_refresh)
+    scan_task: asyncio.Task | None = cache_data.get("scan_task")
+    if scan_task is not None and not scan_task.done():
+        try:
+            result = await asyncio.shield(scan_task)
+            connection.send_result(msg["id"], result)
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:  # noqa: BLE001
+            connection.send_error(msg["id"], "scan_failed", str(exc))
+        return
+
     if not force_refresh and cache_data.get("cache") is not None:
         if cache_ttl <= 0:
             connection.send_result(msg["id"], cache_data["cache"])
@@ -88,25 +123,34 @@ async def ws_network_map(
         connection.send_error(msg["id"], "no_backend", "No Zigbee backend configured")
         return
 
-    start = time.monotonic()
-
-    scan_timeout = entry.options.get(CONF_SCAN_TIMEOUT, DEFAULT_SCAN_TIMEOUT)
+    # Run scan as a detached task so it survives WebSocket disconnection
+    task = hass.async_create_task(_run_scan(hass, entry, resolved))
+    hass.data[DOMAIN][entry.entry_id]["scan_task"] = task
 
     try:
-        if resolved == BACKEND_Z2M:
-            topology = await _fetch_z2m_topology(hass, entry, scan_timeout)
-        else:
-            topology = await asyncio.wait_for(_fetch_zha_topology(hass), timeout=scan_timeout)
-    except TimeoutError:
-        connection.send_error(msg["id"], "timeout", "Network scan timed out")
+        result = await asyncio.shield(task)
+    except asyncio.CancelledError:
         return
     except Exception as exc:  # noqa: BLE001
         connection.send_error(msg["id"], "scan_failed", str(exc))
         return
 
+    connection.send_result(msg["id"], result)
+
+
+async def _run_scan(hass: HomeAssistant, entry: Any, backend: str) -> dict[str, Any]:
+    """Execute a network scan, render SVG, cache and return the result."""
+    hass.data[DOMAIN][entry.entry_id]["scan_start_utc"] = datetime.now(UTC).isoformat()
+    start = time.monotonic()
+    scan_timeout = entry.options.get(CONF_SCAN_TIMEOUT, DEFAULT_SCAN_TIMEOUT)
+
+    if backend == BACKEND_Z2M:
+        topology = await _fetch_z2m_topology(hass, entry, scan_timeout)
+    else:
+        topology = await asyncio.wait_for(_fetch_zha_topology(hass), timeout=scan_timeout)
+
     if topology is None:
-        connection.send_error(msg["id"], "no_data", "No topology data returned")
-        return
+        raise RuntimeError("No topology data returned")
 
     nodes, links = topology
     parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
@@ -143,7 +187,7 @@ async def ws_network_map(
         "device_count": device_count,
         "max_depth": max_depth,
         "scan_duration_ms": scan_duration_ms,
-        "backend": resolved,
+        "backend": backend,
         "scan_timestamp": datetime.now(UTC).isoformat(),
     }
 
@@ -157,7 +201,7 @@ async def ws_network_map(
         except OSError:
             _LOGGER.warning("Failed to save network map cache to %s", cache_path)
 
-    connection.send_result(msg["id"], result)
+    return result
 
 
 def _save_cache(path: str, data: dict) -> None:

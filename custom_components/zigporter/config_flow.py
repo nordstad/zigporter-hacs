@@ -100,11 +100,10 @@ class ZigporterOptionsFlow(OptionsFlow):
                 errors["base"] = "invalid_color"
             else:
                 for key in (CONF_HOP_COLOR_1, CONF_HOP_COLOR_2, CONF_HOP_COLOR_3, CONF_HOP_COLOR_4):
-                    val = user_input.get(key, "")
+                    val = user_input.get(key, "").strip()
                     if val and not val.startswith("#"):
                         val = f"#{val}"
-                    if val:
-                        user_input[key] = val.upper()
+                    user_input[key] = val.upper() if val else ""
                 return self.async_create_entry(title="", data=user_input)
 
         data = self.config_entry.data
@@ -144,19 +143,19 @@ class ZigporterOptionsFlow(OptionsFlow):
                 ): vol.All(int, vol.Range(min=60, max=600)),
                 vol.Optional(
                     CONF_HOP_COLOR_1,
-                    default=current.get(CONF_HOP_COLOR_1, ""),
+                    description={"suggested_value": current.get(CONF_HOP_COLOR_1, "")},
                 ): str,
                 vol.Optional(
                     CONF_HOP_COLOR_2,
-                    default=current.get(CONF_HOP_COLOR_2, ""),
+                    description={"suggested_value": current.get(CONF_HOP_COLOR_2, "")},
                 ): str,
                 vol.Optional(
                     CONF_HOP_COLOR_3,
-                    default=current.get(CONF_HOP_COLOR_3, ""),
+                    description={"suggested_value": current.get(CONF_HOP_COLOR_3, "")},
                 ): str,
                 vol.Optional(
                     CONF_HOP_COLOR_4,
-                    default=current.get(CONF_HOP_COLOR_4, ""),
+                    description={"suggested_value": current.get(CONF_HOP_COLOR_4, "")},
                 ): str,
                 vol.Optional(
                     CONF_HOP_OPACITY,

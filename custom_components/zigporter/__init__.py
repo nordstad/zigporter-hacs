@@ -59,7 +59,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "cache_time": cache_time,
         "cache_path": str(cache_path),
     }
+
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Invalidate cached SVG when options change (e.g. colors)."""
+    if entry.entry_id in hass.data.get(DOMAIN, {}):
+        hass.data[DOMAIN][entry.entry_id]["cache"] = None
+        hass.data[DOMAIN][entry.entry_id]["cache_time"] = None
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

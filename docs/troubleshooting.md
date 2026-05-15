@@ -19,7 +19,13 @@
 
 The card JavaScript is registered when the integration loads, but the browser needs a page refresh to pick it up.
 
-**Fix:** Hard-refresh the browser with `Ctrl+F5` (or `Cmd+Shift+R` on macOS).
+**Fix:** Refresh the browser with `F5` (or `Cmd+R` on macOS).
+
+### "Configuration error" after hard refresh
+
+**Cause:** Home Assistant loads custom card scripts as `<script type="module">` (deferred). On hard refresh (`Ctrl+Shift+R`), the browser bypasses all caches and re-downloads everything — HA's frontend renders cards before the module finishes loading. Since the custom element isn't defined yet, HA shows "Configuration error". This is a known platform limitation that affects all custom cards (Mushroom, Button Card, etc.).
+
+**Fix:** Use a normal refresh (`F5` / `Cmd+R`) instead of hard refresh. If you've already hard-refreshed, a second normal refresh will resolve it.
 
 ### Scan times out
 
