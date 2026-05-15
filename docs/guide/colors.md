@@ -13,6 +13,10 @@ The radial map uses a gradient of four colors for hop rings (concentric circles 
 
 Default opacity: **0.80**
 
+## Finding colors
+
+[Color Hunt](https://colorhunt.co/) is a great resource for discovering 4-color palettes that work well together. Browse palettes tagged "dark", "earth", or "pastel" and copy the hex values directly into the integration options.
+
 ## Custom colors
 
 Set all four hop colors in **Settings → Devices & Services → Zigporter → Configure**:
