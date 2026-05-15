@@ -1,0 +1,51 @@
+[project]
+site_name = "zigporter-hacs"
+site_description = "Zigbee network topology map for Home Assistant — radial SVG visualization with LQI signal quality"
+site_author = "Even Nordstad"
+site_url = "https://nordstad.github.io/zigporter-hacs"
+repo_url = "https://github.com/nordstad/zigporter-hacs"
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = [
+    { "Installation" = "getting-started/installation.md" },
+    { "Configuration" = "getting-started/configuration.md" },
+  ] },
+  { "Guide" = [
+    { "Network map" = "guide/network-map.md" },
+    { "Colors & theming" = "guide/colors.md" },
+  ] },
+  { "Troubleshooting" = "troubleshooting.md" },
+]
+
+[project.theme]
+name = "material"
+variant = "modern"
+logo = "assets/icon.png"
+favicon = "assets/icon.png"
+features = [
+  "content.code.copy",
+  "navigation.instant",
+  "navigation.sections",
+  "navigation.top",
+  "search.highlight",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "teal"
+accent = "cyan"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "teal"
+accent = "cyan"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.plugins]]
+search = {}

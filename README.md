@@ -3,6 +3,7 @@
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![GitHub Release](https://img.shields.io/github/v/release/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/releases)
 [![Validate](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml/badge.svg)](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml)
+[![Docs](https://img.shields.io/badge/docs-nordstad.github.io-teal)](https://nordstad.github.io/zigporter-hacs/)
 [![License: MIT](https://img.shields.io/github/license/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/blob/main/LICENSE)
 
 <p align="center">
@@ -12,6 +13,8 @@
 Zigbee network topology map for Home Assistant. Visualize your mesh network with LQI signal quality indicators, routing paths, and device hierarchy.
 
 Supports both **Zigbee2MQTT** and **ZHA** backends.
+
+**[Documentation](https://nordstad.github.io/zigporter-hacs/)** · [Getting started](https://nordstad.github.io/zigporter-hacs/getting-started/installation/) · [Troubleshooting](https://nordstad.github.io/zigporter-hacs/troubleshooting/)
 
 ## Installation
 

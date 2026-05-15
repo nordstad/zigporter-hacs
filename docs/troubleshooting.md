@@ -1,0 +1,96 @@
+# Troubleshooting
+
+## Common issues
+
+### "Invalid handler specified" error
+
+**Cause:** Import error in the integration Python files — usually a truncated file copy or stale bytecode cache.
+
+**Fix:**
+
+1. Check the real traceback in **Settings → System → Logs** (search for "zigporter").
+2. Delete the bytecode cache:
+   ```
+   rm -rf /config/custom_components/zigporter/__pycache__/
+   ```
+3. Restart Home Assistant.
+
+### Card not appearing after install
+
+The card JavaScript is registered when the integration loads, but the browser needs a page refresh to pick it up.
+
+**Fix:** Hard-refresh the browser with `Ctrl+F5` (or `Cmd+Shift+R` on macOS).
+
+### Scan times out
+
+Large Zigbee networks (50+ devices) can take several minutes to scan. The Z2M coordinator queries each device sequentially.
+
+**Fix:** Increase the scan timeout in integration options (default: 600s, max: 600s, range: 60–600s).
+
+Typical scan times by network size:
+
+| Devices | Expected time |
+|---------|---------------|
+| 10–20 | 15–30s |
+| 30–50 | 40–70s |
+| 50–100 | 1–3 min |
+| 100+ | 3–9 min |
+
+### Map shows flat topology (no hops)
+
+**Cause:** ZHA backend often lacks full routing table data.
+
+**Options:**
+
+- Switch to Zigbee2MQTT backend if available — it provides complete neighbor/LQI tables.
+- The ZHA map will still show all devices, just without multi-hop depth.
+
+### Stale map after HA restart
+
+The integration loads the last cached scan from disk on startup. This is expected behavior — click **Scan** to capture fresh topology.
+
+If you see an old `.gz` sidecar file causing issues:
+```
+rm /config/custom_components/zigporter/static/*.gz
+```
+
+### Wrong backend auto-detected
+
+If you have both ZHA and Zigbee2MQTT installed, the integration setup may pick the wrong one.
+
+**Fix:** During setup (or in options afterward), explicitly select your preferred backend. You can switch between them in **Configure** without reinstalling.
+
+### MQTT not configured error
+
+When selecting Zigbee2MQTT as backend, the integration checks that the MQTT integration is set up in Home Assistant.
+
+**Fix:** Ensure the [MQTT integration](https://www.home-assistant.io/integrations/mqtt/) is configured and connected before adding Zigporter.
+
+## Browser cache issues
+
+Home Assistant static files can be aggressively cached. If you see stale card behavior after an update:
+
+1. Hard-refresh: `Ctrl+F5` / `Cmd+Shift+R`
+2. Clear browser cache for your HA URL
+3. Check for stale `.gz` files in the static directory
+
+!!! note
+    The integration uses `cache_headers=False` to prevent browser caching issues, but HA may still gzip static files into `.gz` sidecars that serve stale content.
+
+## Debug logging
+
+Enable debug logging for deeper diagnostics:
+
+```yaml
+# configuration.yaml
+logger:
+  logs:
+    custom_components.zigporter: debug
+```
+
+Restart HA, then check **Settings → System → Logs** for detailed scan progress and timing information.
+
+## Getting help
+
+- [GitHub Issues](https://github.com/nordstad/zigporter-hacs/issues) — bug reports and feature requests
+- Check existing issues before filing — your problem may already be tracked
