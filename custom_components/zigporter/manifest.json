@@ -6,7 +6,6 @@
   "config_flow": true,
   "dependencies": ["frontend", "http"],
   "documentation": "https://github.com/nordstad/zigporter-hacs",
-  "homeassistant": "2024.8.0",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/nordstad/zigporter-hacs/issues",
   "requirements": [],
