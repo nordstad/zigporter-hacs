@@ -32,7 +32,12 @@
           "warn_lqi": "Warning LQI threshold",
           "critical_lqi": "Critical LQI threshold",
           "cache_ttl": "Cache TTL (seconds)",
-          "scan_timeout": "Scan timeout (seconds)"
+          "scan_timeout": "Scan timeout (seconds)",
+          "hop_color_1": "Hop 1 ring color",
+          "hop_color_2": "Hop 2 ring color",
+          "hop_color_3": "Hop 3 ring color",
+          "hop_color_4": "Hop 4 ring color",
+          "hop_opacity": "Ring opacity"
         },
         "data_description": {
           "backend": "Switch between Zigbee2MQTT and ZHA without reinstalling.",
@@ -40,9 +45,17 @@
           "warn_lqi": "Links below this LQI are shown in yellow.",
           "critical_lqi": "Links below this LQI are shown in red.",
           "cache_ttl": "How long to cache the network map before re-scanning (0 = no cache).",
-          "scan_timeout": "Maximum seconds to wait for a network scan to complete."
+          "scan_timeout": "Maximum seconds to wait for a network scan to complete.",
+          "hop_color_1": "Background color for the first hop ring (#RRGGBB). Set all 4 or leave all empty for defaults.",
+          "hop_color_2": "Background color for the second hop ring (#RRGGBB). Set all 4 or leave all empty for defaults.",
+          "hop_color_3": "Background color for the third hop ring (#RRGGBB). Set all 4 or leave all empty for defaults.",
+          "hop_color_4": "Background color for the fourth hop ring (#RRGGBB). Set all 4 or leave all empty for defaults.",
+          "hop_opacity": "Opacity of hop ring fills (0.1–1.0). Default: 0.80."
         }
       }
+    },
+    "error": {
+      "incomplete_palette": "All 4 hop colors must be set, or leave all empty for defaults."
     }
   }
 }

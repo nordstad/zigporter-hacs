@@ -18,11 +18,17 @@ from .const import (
     CONF_BACKEND,
     CONF_CACHE_TTL,
     CONF_CRITICAL_LQI,
+    CONF_HOP_COLOR_1,
+    CONF_HOP_COLOR_2,
+    CONF_HOP_COLOR_3,
+    CONF_HOP_COLOR_4,
+    CONF_HOP_OPACITY,
     CONF_MQTT_TOPIC,
     CONF_SCAN_TIMEOUT,
     CONF_WARN_LQI,
     DEFAULT_CACHE_TTL,
     DEFAULT_CRITICAL_LQI,
+    DEFAULT_HOP_OPACITY,
     DEFAULT_MQTT_TOPIC,
     DEFAULT_SCAN_TIMEOUT,
     DEFAULT_WARN_LQI,
@@ -108,6 +114,15 @@ async def ws_network_map(
     warn_lqi = entry.options.get(CONF_WARN_LQI, DEFAULT_WARN_LQI)
     critical_lqi = entry.options.get(CONF_CRITICAL_LQI, DEFAULT_CRITICAL_LQI)
 
+    raw_colors = [
+        entry.options.get(CONF_HOP_COLOR_1, ""),
+        entry.options.get(CONF_HOP_COLOR_2, ""),
+        entry.options.get(CONF_HOP_COLOR_3, ""),
+        entry.options.get(CONF_HOP_COLOR_4, ""),
+    ]
+    hop_colors = raw_colors if all(raw_colors) else None
+    hop_opacity = entry.options.get(CONF_HOP_OPACITY, DEFAULT_HOP_OPACITY)
+
     svg = render_svg(
         nodes=nodes,
         parent_map=parent_map,
@@ -115,6 +130,8 @@ async def ws_network_map(
         depth_map=depth_map,
         warn_lqi=warn_lqi,
         critical_lqi=critical_lqi,
+        hop_colors=hop_colors,
+        hop_opacity=hop_opacity,
     )
 
     scan_duration_ms = int((time.monotonic() - start) * 1000)

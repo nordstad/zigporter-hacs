@@ -1,5 +1,6 @@
 """Config flow for Zigporter integration."""
 
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -13,16 +14,33 @@ from .const import (
     CONF_BACKEND,
     CONF_CACHE_TTL,
     CONF_CRITICAL_LQI,
+    CONF_HOP_COLOR_1,
+    CONF_HOP_COLOR_2,
+    CONF_HOP_COLOR_3,
+    CONF_HOP_COLOR_4,
+    CONF_HOP_OPACITY,
     CONF_MQTT_TOPIC,
     CONF_SCAN_TIMEOUT,
     CONF_WARN_LQI,
     DEFAULT_CACHE_TTL,
     DEFAULT_CRITICAL_LQI,
+    DEFAULT_HOP_OPACITY,
     DEFAULT_MQTT_TOPIC,
     DEFAULT_SCAN_TIMEOUT,
     DEFAULT_WARN_LQI,
     DOMAIN,
 )
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def _validate_hex_color(value: str) -> str:
+    """Validate optional hex color — empty string means use default."""
+    if value == "":
+        return value
+    if not _HEX_COLOR_RE.match(value):
+        raise vol.Invalid(f"Invalid color format: {value}. Use #RRGGBB.")
+    return value.upper()
 
 
 class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -71,8 +89,20 @@ class ZigporterOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Manage the options."""
+        errors: dict[str, str] = {}
+
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            color_fields = [
+                user_input.get(CONF_HOP_COLOR_1, ""),
+                user_input.get(CONF_HOP_COLOR_2, ""),
+                user_input.get(CONF_HOP_COLOR_3, ""),
+                user_input.get(CONF_HOP_COLOR_4, ""),
+            ]
+            filled = [c for c in color_fields if c]
+            if 0 < len(filled) < 4:
+                errors["base"] = "incomplete_palette"
+            else:
+                return self.async_create_entry(title="", data=user_input)
 
         data = self.config_entry.data
         current = self.config_entry.options
@@ -109,6 +139,26 @@ class ZigporterOptionsFlow(OptionsFlow):
                     CONF_SCAN_TIMEOUT,
                     default=current.get(CONF_SCAN_TIMEOUT, DEFAULT_SCAN_TIMEOUT),
                 ): vol.All(int, vol.Range(min=60, max=600)),
+                vol.Optional(
+                    CONF_HOP_COLOR_1,
+                    default=current.get(CONF_HOP_COLOR_1, ""),
+                ): _validate_hex_color,
+                vol.Optional(
+                    CONF_HOP_COLOR_2,
+                    default=current.get(CONF_HOP_COLOR_2, ""),
+                ): _validate_hex_color,
+                vol.Optional(
+                    CONF_HOP_COLOR_3,
+                    default=current.get(CONF_HOP_COLOR_3, ""),
+                ): _validate_hex_color,
+                vol.Optional(
+                    CONF_HOP_COLOR_4,
+                    default=current.get(CONF_HOP_COLOR_4, ""),
+                ): _validate_hex_color,
+                vol.Optional(
+                    CONF_HOP_OPACITY,
+                    default=current.get(CONF_HOP_OPACITY, DEFAULT_HOP_OPACITY),
+                ): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=1.0)),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

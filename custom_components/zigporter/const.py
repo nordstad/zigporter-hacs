@@ -8,12 +8,19 @@ CONF_WARN_LQI = "warn_lqi"
 CONF_CRITICAL_LQI = "critical_lqi"
 CONF_CACHE_TTL = "cache_ttl"
 CONF_SCAN_TIMEOUT = "scan_timeout"
+CONF_HOP_COLOR_1 = "hop_color_1"
+CONF_HOP_COLOR_2 = "hop_color_2"
+CONF_HOP_COLOR_3 = "hop_color_3"
+CONF_HOP_COLOR_4 = "hop_color_4"
+CONF_HOP_OPACITY = "hop_opacity"
 
 DEFAULT_MQTT_TOPIC = "zigbee2mqtt"
 DEFAULT_WARN_LQI = 50
 DEFAULT_CRITICAL_LQI = 20
 DEFAULT_CACHE_TTL = 0  # 0 = manual refresh only (never auto-expire)
 DEFAULT_SCAN_TIMEOUT = 600
+DEFAULT_HOP_COLORS = ["#202940", "#4B4038", "#9A8678", "#CAAA98"]
+DEFAULT_HOP_OPACITY = 0.80
 
 BACKEND_Z2M = "zigbee2mqtt"
 BACKEND_ZHA = "zha"
