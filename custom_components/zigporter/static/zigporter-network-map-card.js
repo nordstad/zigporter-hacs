@@ -272,7 +272,12 @@ class ZigporterNetworkMapCard extends HTMLElement {
           ? result.scan_duration_ms + "ms"
           : (result.scan_duration_ms / 1000).toFixed(1) + "s";
         const backendLabel = result.backend === "zha" ? "ZHA" : "Z2M";
-        statsEl.textContent = backendLabel + " \u00b7 " + result.device_count + " devices \u00b7 " + result.max_depth + " hops \u00b7 " + duration;
+        let stats = backendLabel + " \u00b7 " + result.device_count + " devices \u00b7 " + result.max_depth + " hops \u00b7 " + duration;
+        if (result.scan_timestamp) {
+          const d = new Date(result.scan_timestamp);
+          stats += " \u00b7 Scanned " + d.toLocaleString();
+        }
+        statsEl.textContent = stats;
       }
     } catch (err) {
       clearInterval(timerInterval);

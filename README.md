@@ -89,6 +89,8 @@ The integration requests a network topology scan from your Zigbee backend, build
 - **Zigbee2MQTT** — publishes to `zigbee2mqtt/bridge/request/networkmap` via MQTT
 - **ZHA** — reads device list and neighbor tables from the ZHA gateway
 
+> **Note:** The network map is a point-in-time snapshot. Zigbee mesh networks continuously optimize their routing, and devices may join or leave. The card displays the scan date in the stats line so you know how current the map is. Click **Scan** to capture a fresh topology.
+
 ## Limitations
 
 - ZHA maps may lack routing data, producing a flat topology.

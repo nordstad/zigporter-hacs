@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -126,6 +127,7 @@ async def ws_network_map(
         "max_depth": max_depth,
         "scan_duration_ms": scan_duration_ms,
         "backend": resolved,
+        "scan_timestamp": datetime.now(UTC).isoformat(),
     }
 
     hass.data[DOMAIN][entry.entry_id]["cache"] = result
