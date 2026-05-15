@@ -35,16 +35,7 @@ from .const import (
     DOMAIN,
 )
 
-_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
-
-
-def _validate_hex_color(value: str) -> str:
-    """Validate optional hex color — empty string means use default."""
-    if value == "":
-        return value
-    if not _HEX_COLOR_RE.match(value):
-        raise vol.Invalid(f"Invalid color format: {value}. Use #RRGGBB.")
-    return value.upper()
+_HEX_COLOR_RE = re.compile(r"^#?[0-9A-Fa-f]{6}$")
 
 
 class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -97,15 +88,23 @@ class ZigporterOptionsFlow(OptionsFlow):
 
         if user_input is not None:
             color_fields = [
-                user_input.get(CONF_HOP_COLOR_1, ""),
-                user_input.get(CONF_HOP_COLOR_2, ""),
-                user_input.get(CONF_HOP_COLOR_3, ""),
-                user_input.get(CONF_HOP_COLOR_4, ""),
+                user_input.get(CONF_HOP_COLOR_1, "").strip(),
+                user_input.get(CONF_HOP_COLOR_2, "").strip(),
+                user_input.get(CONF_HOP_COLOR_3, "").strip(),
+                user_input.get(CONF_HOP_COLOR_4, "").strip(),
             ]
             filled = [c for c in color_fields if c]
             if 0 < len(filled) < 4:
                 errors["base"] = "incomplete_palette"
+            elif any(c and not _HEX_COLOR_RE.match(c) for c in filled):
+                errors["base"] = "invalid_color"
             else:
+                for key in (CONF_HOP_COLOR_1, CONF_HOP_COLOR_2, CONF_HOP_COLOR_3, CONF_HOP_COLOR_4):
+                    val = user_input.get(key, "")
+                    if val and not val.startswith("#"):
+                        val = f"#{val}"
+                    if val:
+                        user_input[key] = val.upper()
                 return self.async_create_entry(title="", data=user_input)
 
         data = self.config_entry.data
@@ -146,19 +145,19 @@ class ZigporterOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_HOP_COLOR_1,
                     default=current.get(CONF_HOP_COLOR_1, ""),
-                ): _validate_hex_color,
+                ): str,
                 vol.Optional(
                     CONF_HOP_COLOR_2,
                     default=current.get(CONF_HOP_COLOR_2, ""),
-                ): _validate_hex_color,
+                ): str,
                 vol.Optional(
                     CONF_HOP_COLOR_3,
                     default=current.get(CONF_HOP_COLOR_3, ""),
-                ): _validate_hex_color,
+                ): str,
                 vol.Optional(
                     CONF_HOP_COLOR_4,
                     default=current.get(CONF_HOP_COLOR_4, ""),
-                ): _validate_hex_color,
+                ): str,
                 vol.Optional(
                     CONF_HOP_OPACITY,
                     default=current.get(CONF_HOP_OPACITY, DEFAULT_HOP_OPACITY),

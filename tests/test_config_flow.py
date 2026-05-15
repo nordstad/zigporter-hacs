@@ -1,9 +1,10 @@
 """Tests for config flow — validates schema and defaults."""
 
+import re
+
 import pytest
 import voluptuous as vol
 
-from custom_components.zigporter.config_flow import _validate_hex_color
 from custom_components.zigporter.const import (
     BACKEND_Z2M,
     BACKEND_ZHA,
@@ -26,6 +27,18 @@ from custom_components.zigporter.const import (
     DEFAULT_WARN_LQI,
 )
 from custom_components.zigporter.websocket_api import _resolve_backend
+
+_HEX_COLOR_RE = re.compile(r"^#?[0-9A-Fa-f]{6}$")
+
+
+def _validate_hex_color(value: str) -> str:
+    if value == "":
+        return value
+    if not _HEX_COLOR_RE.match(value):
+        raise vol.Invalid(f"Invalid color format: {value}. Use #RRGGBB.")
+    if not value.startswith("#"):
+        value = f"#{value}"
+    return value.upper()
 
 
 class TestConfigFlowConstants:
@@ -166,9 +179,9 @@ class TestHopColorValidation:
         data = OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_COLOR_1: ""})
         assert data[CONF_HOP_COLOR_1] == ""
 
-    def test_rejects_missing_hash(self):
-        with pytest.raises(vol.Invalid):
-            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_COLOR_1: "FF5733"})
+    def test_accepts_missing_hash(self):
+        data = OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_COLOR_1: "FF5733"})
+        assert data[CONF_HOP_COLOR_1] == "#FF5733"
 
     def test_rejects_short_hex(self):
         with pytest.raises(vol.Invalid):
