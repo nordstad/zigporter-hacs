@@ -11,6 +11,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any
 
+from .const import DEFAULT_HOP_COLORS
+
 # ── Visual constants ──────────────────────────────────────────────────────────
 
 MIN_RING_GAP = 200
@@ -18,12 +20,7 @@ ANGULAR_PADDING = 50
 LABEL_OFFSET = 30
 LABEL_MARGIN = 340
 
-HOP_COLORS = [
-    "#202940",  # dark navy
-    "#4B4038",  # dark brown
-    "#9A8678",  # warm tan
-    "#CAAA98",  # light cream
-]
+HOP_COLORS = DEFAULT_HOP_COLORS
 
 NODE_R_COORD = 28
 NODE_R_ROUTER = 20
@@ -555,6 +552,8 @@ def render_svg(
     depth_map: dict[str, int],
     warn_lqi: int = 50,
     critical_lqi: int = 20,
+    hop_colors: list[str] | None = None,
+    hop_opacity: float = 0.80,
 ) -> str:
     """Render a radial Zigbee network map as an SVG XML string."""
     if not nodes:
@@ -566,6 +565,9 @@ def render_svg(
         )
         t.text = "No devices found"
         return ET.tostring(empty, encoding="unicode")
+
+    colors = hop_colors if hop_colors else HOP_COLORS
+    opacity_str = f"{hop_opacity:.2f}"
 
     # Build children map from parent_map
     children: dict[str, list[str]] = {}
@@ -619,14 +621,14 @@ def render_svg(
     for h in range(1, max_hops + 1):
         r_inner = ring_radii.get(h - 1, 0.0) if h > 1 else 0.0
         r_outer = ring_radii[h]
-        hop_color = HOP_COLORS[(h - 1) % len(HOP_COLORS)]
+        hop_color = colors[(h - 1) % len(colors)]
         ET.SubElement(
             ring_fill_group,
             "path",
             {
                 "d": _annulus_path(cx, cy, r_inner, r_outer),
                 "fill": hop_color,
-                "fill-opacity": "0.80",
+                "fill-opacity": opacity_str,
                 "fill-rule": "evenodd",
                 "stroke": "none",
             },
@@ -635,7 +637,7 @@ def render_svg(
     # Ring guides
     ring_group = ET.SubElement(svg, "g", {"id": "rings"})
     for h in range(1, max_hops + 1):
-        ring_label_c = HOP_COLORS[(h - 1) % len(HOP_COLORS)]
+        ring_label_c = colors[(h - 1) % len(colors)]
         ring_r = ring_radii[h]
         ET.SubElement(
             ring_group,

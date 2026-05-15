@@ -3,17 +3,24 @@
 import pytest
 import voluptuous as vol
 
+from custom_components.zigporter.config_flow import _validate_hex_color
 from custom_components.zigporter.const import (
     BACKEND_Z2M,
     BACKEND_ZHA,
     CONF_BACKEND,
     CONF_CACHE_TTL,
     CONF_CRITICAL_LQI,
+    CONF_HOP_COLOR_1,
+    CONF_HOP_COLOR_2,
+    CONF_HOP_COLOR_3,
+    CONF_HOP_COLOR_4,
+    CONF_HOP_OPACITY,
     CONF_MQTT_TOPIC,
     CONF_SCAN_TIMEOUT,
     CONF_WARN_LQI,
     DEFAULT_CACHE_TTL,
     DEFAULT_CRITICAL_LQI,
+    DEFAULT_HOP_OPACITY,
     DEFAULT_MQTT_TOPIC,
     DEFAULT_SCAN_TIMEOUT,
     DEFAULT_WARN_LQI,
@@ -58,6 +65,13 @@ OPTIONS_SCHEMA = vol.Schema(
         ),
         vol.Optional(CONF_SCAN_TIMEOUT, default=DEFAULT_SCAN_TIMEOUT): vol.All(
             int, vol.Range(min=60, max=600)
+        ),
+        vol.Optional(CONF_HOP_COLOR_1, default=""): _validate_hex_color,
+        vol.Optional(CONF_HOP_COLOR_2, default=""): _validate_hex_color,
+        vol.Optional(CONF_HOP_COLOR_3, default=""): _validate_hex_color,
+        vol.Optional(CONF_HOP_COLOR_4, default=""): _validate_hex_color,
+        vol.Optional(CONF_HOP_OPACITY, default=DEFAULT_HOP_OPACITY): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1, max=1.0)
         ),
     }
 )
@@ -132,3 +146,50 @@ class TestResolveBackend:
 
     def test_empty_string_returns_none(self):
         assert _resolve_backend("") is None
+
+
+class TestHopColorValidation:
+    def test_accepts_valid_hex_colors(self):
+        data = OPTIONS_SCHEMA(
+            {
+                CONF_BACKEND: BACKEND_Z2M,
+                CONF_HOP_COLOR_1: "#FF5733",
+                CONF_HOP_COLOR_2: "#33FF57",
+                CONF_HOP_COLOR_3: "#3357FF",
+                CONF_HOP_COLOR_4: "#AABBCC",
+            }
+        )
+        assert data[CONF_HOP_COLOR_1] == "#FF5733"
+        assert data[CONF_HOP_COLOR_4] == "#AABBCC"
+
+    def test_accepts_empty_string_as_default(self):
+        data = OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_COLOR_1: ""})
+        assert data[CONF_HOP_COLOR_1] == ""
+
+    def test_rejects_missing_hash(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_COLOR_1: "FF5733"})
+
+    def test_rejects_short_hex(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_COLOR_1: "#FFF"})
+
+    def test_rejects_invalid_chars(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_COLOR_1: "#GGGGGG"})
+
+    def test_normalizes_to_uppercase(self):
+        data = OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_COLOR_1: "#abcdef"})
+        assert data[CONF_HOP_COLOR_1] == "#ABCDEF"
+
+    def test_opacity_in_range(self):
+        data = OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_OPACITY: 0.5})
+        assert data[CONF_HOP_OPACITY] == 0.5
+
+    def test_opacity_rejects_zero(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_OPACITY: 0.0})
+
+    def test_opacity_rejects_above_one(self):
+        with pytest.raises(vol.Invalid):
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_HOP_OPACITY: 1.5})

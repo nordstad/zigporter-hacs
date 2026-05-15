@@ -113,3 +113,81 @@ class TestRenderSvg:
         ET.fromstring(svg)
         # Raw < and > should NOT appear unescaped
         assert "<script>" not in svg
+
+
+class TestCustomHopColors:
+    def test_custom_colors_applied(self, sample_z2m_nodes, sample_z2m_links):
+        parent_map, lqi_map, depth_map = build_routing_tree(sample_z2m_nodes, sample_z2m_links)
+        custom = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00"]
+        svg = render_svg(
+            nodes=sample_z2m_nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            hop_colors=custom,
+        )
+        assert "#FF0000" in svg
+        assert "#00FF00" in svg
+
+    def test_none_uses_defaults(self, sample_z2m_nodes, sample_z2m_links):
+        parent_map, lqi_map, depth_map = build_routing_tree(sample_z2m_nodes, sample_z2m_links)
+        svg = render_svg(
+            nodes=sample_z2m_nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            hop_colors=None,
+        )
+        assert "#202940" in svg or "#4B4038" in svg
+
+    def test_custom_opacity_applied(self, sample_z2m_nodes, sample_z2m_links):
+        parent_map, lqi_map, depth_map = build_routing_tree(sample_z2m_nodes, sample_z2m_links)
+        svg = render_svg(
+            nodes=sample_z2m_nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            hop_opacity=0.50,
+        )
+        assert 'fill-opacity="0.50"' in svg
+
+    def test_default_opacity(self, sample_z2m_nodes, sample_z2m_links):
+        parent_map, lqi_map, depth_map = build_routing_tree(sample_z2m_nodes, sample_z2m_links)
+        svg = render_svg(
+            nodes=sample_z2m_nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+        )
+        assert 'fill-opacity="0.80"' in svg
+
+    def test_cyclic_repeat_for_deep_network(self):
+        nodes = {
+            "0xcoord": {
+                "ieeeAddr": "0xcoord",
+                "friendlyName": "Coordinator",
+                "type": "Coordinator",
+            },
+        }
+        links = []
+        prev = "0xcoord"
+        for i in range(1, 6):
+            ieee = f"0xnode{i}"
+            nodes[ieee] = {"ieeeAddr": ieee, "friendlyName": f"Router {i}", "type": "Router"}
+            links.append({"source": {"ieeeAddr": ieee}, "target": {"ieeeAddr": prev}, "lqi": 200})
+            links.append({"source": {"ieeeAddr": prev}, "target": {"ieeeAddr": ieee}, "lqi": 200})
+            prev = ieee
+
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        custom = ["#AA0000", "#00AA00", "#0000AA", "#AAAA00"]
+        svg = render_svg(
+            nodes=nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            hop_colors=custom,
+        )
+        assert "#AA0000" in svg
+        assert "#00AA00" in svg
+        assert "#0000AA" in svg
+        assert "#AAAA00" in svg
