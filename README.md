@@ -55,6 +55,8 @@ Click **Configure** on the integration to adjust:
 
 The card JS is registered automatically — no manual resource setup needed.
 
+> **First install:** After adding the integration, refresh your browser (F5) before adding the card. The card resource is registered on integration load, but the browser needs a page refresh to pick it up.
+
 ### Adding the card (recommended: Panel view)
 
 The network map works best as a full-page card in a **Panel** view:
