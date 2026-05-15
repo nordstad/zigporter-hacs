@@ -220,3 +220,4 @@ __marimo__/
 hacs-plan/
 
 .mcp.json
+custom_components/zigporter/.DS_Store

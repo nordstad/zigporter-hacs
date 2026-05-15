@@ -1,6 +1,6 @@
 [project]
 name = "zigporter-hacs"
-version = "0.1.0"
+version = "0.2.1"
 description = "Zigporter HACS integration for Home Assistant"
 requires-python = ">=3.12"
 license = "MIT"
@@ -11,7 +11,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
-    "homeassistant>=2024.1.0",
+    "homeassistant>=2024.8.0",
     "voluptuous>=0.14",
 ]
 
