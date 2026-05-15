@@ -11,14 +11,14 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any
 
+from .const import DEFAULT_HOP_COLORS
+
 # ── Visual constants ──────────────────────────────────────────────────────────
 
 MIN_RING_GAP = 200
 ANGULAR_PADDING = 50
 LABEL_OFFSET = 30
 LABEL_MARGIN = 340
-
-from .const import DEFAULT_HOP_COLORS
 
 HOP_COLORS = DEFAULT_HOP_COLORS
 
