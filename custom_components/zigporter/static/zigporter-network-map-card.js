@@ -75,6 +75,7 @@ class ZigporterNetworkMapCard extends HTMLElement {
       }
       .action-btn:hover { background: var(--secondary-background-color); }
       .action-btn:disabled { opacity: 0.3; cursor: default; }
+      a.action-btn { text-decoration: none; }
     `;
 
     const header = document.createElement("div");
@@ -95,8 +96,17 @@ class ZigporterNetworkMapCard extends HTMLElement {
     resetBtn.title = "Reset zoom";
     resetBtn.addEventListener("click", () => this._resetView());
 
+    const helpBtn = document.createElement("a");
+    helpBtn.className = "action-btn";
+    helpBtn.textContent = "Help";
+    helpBtn.title = "Documentation";
+    helpBtn.href = "https://nordstad.github.io/zigporter-hacs/";
+    helpBtn.target = "_blank";
+    helpBtn.rel = "noopener";
+
     const btnGroup = document.createElement("div");
     btnGroup.className = "btn-group";
+    btnGroup.appendChild(helpBtn);
     btnGroup.appendChild(resetBtn);
     btnGroup.appendChild(refreshBtn);
 
