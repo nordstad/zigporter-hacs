@@ -15,6 +15,10 @@ Zigbee network topology map for Home Assistant. Visualize your mesh network with
 
 Supports both **Zigbee2MQTT** and **ZHA** backends.
 
+<p align="center">
+  <img src="assets/demo-network.svg" alt="Demo network map" width="100%">
+</p>
+
 ## Features
 
 - **Radial network map** — devices arranged by hop distance from coordinator
