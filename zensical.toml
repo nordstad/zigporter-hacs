@@ -49,3 +49,7 @@ toggle.name = "Switch to dark mode"
 
 [[project.plugins]]
 search = {}
+
+[project.extra.analytics]
+provider = "google"
+property = "G-S1F1E1MYLJ"
