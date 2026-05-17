@@ -51,8 +51,8 @@ Click **Configure** on the integration to adjust:
 | Critical LQI | 20 | Links below this show red |
 | Scan timeout | 600s | Max wait for network scan (60–600s) |
 | Cache TTL | 0 | Seconds to cache the map (0 = manual refresh only) |
-| Hop colors 1–4 | *(empty)* | Custom ring gradient colors ([details](https://nordstad.github.io/zigporter-hacs/guide/colors/)) |
-| Hop opacity | 0.80 | Opacity of hop ring fills (0.1–1.0) |
+| Hop colors 1–4 | `#101819` `#1C2829` `#2B3A3A` `#425352` | Custom ring gradient colors ([details](https://nordstad.github.io/zigporter-hacs/guide/colors/)) |
+| Hop opacity | 0.90 | Opacity of hop ring fills (0.1–1.0) |
 
 > **Tip:** If you have both ZHA and Zigbee2MQTT running, you can switch between them in options to view either network — no need to remove and re-add the integration.
 
