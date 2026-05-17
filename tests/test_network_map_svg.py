@@ -138,7 +138,7 @@ class TestCustomHopColors:
             depth_map=depth_map,
             hop_colors=None,
         )
-        assert "#202940" in svg or "#4B4038" in svg
+        assert "#101819" in svg or "#1C2829" in svg
 
     def test_custom_opacity_applied(self, sample_z2m_nodes, sample_z2m_links):
         parent_map, lqi_map, depth_map = build_routing_tree(sample_z2m_nodes, sample_z2m_links)
