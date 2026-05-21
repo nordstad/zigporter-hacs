@@ -140,7 +140,7 @@ class ZigporterOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_SCAN_TIMEOUT,
                     default=current.get(CONF_SCAN_TIMEOUT, DEFAULT_SCAN_TIMEOUT),
-                ): vol.All(int, vol.Range(min=60, max=600)),
+                ): vol.All(int, vol.Range(min=60, max=1200)),
                 vol.Optional(
                     CONF_HOP_COLOR_1,
                     description={"suggested_value": current.get(CONF_HOP_COLOR_1, "")},

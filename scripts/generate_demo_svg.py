@@ -6,8 +6,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from custom_components.zigporter.network_map import build_routing_tree
-from custom_components.zigporter.network_map_svg import render_svg
+import _ha_stubs  # noqa: E402
+
+_ha_stubs.install()
+
+from custom_components.zigporter.network_map import build_routing_tree  # noqa: E402
+from custom_components.zigporter.network_map_svg import render_svg  # noqa: E402
 
 SEED = 42
 

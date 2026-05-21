@@ -27,6 +27,15 @@ Custom Home Assistant integration (HACS) that renders a radial Zigbee network ma
 uv run pytest tests/ -v          # 23 tests
 ```
 
+## Git Workflow
+
+After merging a PR, always delete the branch both locally and on remote:
+
+```bash
+git branch -d <branch>
+git push origin --delete <branch>
+```
+
 ## Deployment
 
 See project memory for deployment details (private, not in repo).

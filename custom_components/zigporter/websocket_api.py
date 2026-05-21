@@ -14,7 +14,6 @@ from homeassistant.core import HomeAssistant, callback
 
 from .const import (
     BACKEND_Z2M,
-    BACKEND_ZHA,
     CONF_BACKEND,
     CONF_CACHE_TTL,
     CONF_CRITICAL_LQI,
@@ -33,6 +32,7 @@ from .const import (
     DEFAULT_SCAN_TIMEOUT,
     DEFAULT_WARN_LQI,
     DOMAIN,
+    _resolve_backend,
 )
 from .network_map import (
     build_flat_zha_topology,
@@ -120,6 +120,7 @@ async def ws_network_map(
     resolved = _resolve_backend(backend)
 
     if resolved is None:
+        _LOGGER.warning("No Zigbee backend configured (raw value: %r)", backend)
         connection.send_error(msg["id"], "no_backend", "No Zigbee backend configured")
         return
 
@@ -143,16 +144,37 @@ async def _run_scan(hass: HomeAssistant, entry: Any, backend: str) -> dict[str, 
     hass.data[DOMAIN][entry.entry_id]["scan_start_utc"] = datetime.now(UTC).isoformat()
     start = time.monotonic()
     scan_timeout = entry.options.get(CONF_SCAN_TIMEOUT, DEFAULT_SCAN_TIMEOUT)
+    _LOGGER.info("Starting %s network scan (timeout: %ds)", backend, scan_timeout)
 
-    if backend == BACKEND_Z2M:
-        topology = await _fetch_z2m_topology(hass, entry, scan_timeout)
-    else:
-        topology = await asyncio.wait_for(_fetch_zha_topology(hass), timeout=scan_timeout)
+    try:
+        if backend == BACKEND_Z2M:
+            topology = await _fetch_z2m_topology(hass, entry, scan_timeout)
+        else:
+            topology = await asyncio.wait_for(_fetch_zha_topology(hass), timeout=scan_timeout)
+    except TimeoutError:
+        elapsed = time.monotonic() - start
+        _LOGGER.warning(
+            "Network scan timed out after %.1fs (limit: %ds) — "
+            "try increasing scan timeout in integration options",
+            elapsed,
+            scan_timeout,
+        )
+        raise RuntimeError(
+            f"Scan timed out after {elapsed:.0f}s. "
+            f"Increase timeout in Zigporter options (current: {scan_timeout}s)."
+        ) from None
 
     if topology is None:
+        _LOGGER.warning("Backend %s returned no topology data", backend)
         raise RuntimeError("No topology data returned")
 
     nodes, links = topology
+    _LOGGER.info(
+        "Scan complete: %d nodes, %d links in %.1fs",
+        len(nodes),
+        len(links),
+        time.monotonic() - start,
+    )
     parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
 
     warn_lqi = entry.options.get(CONF_WARN_LQI, DEFAULT_WARN_LQI)
@@ -217,13 +239,6 @@ def _get_config_entry(hass: HomeAssistant):
     return entries[0] if entries else None
 
 
-def _resolve_backend(backend: str | None) -> str | None:
-    """Resolve which backend to use."""
-    if backend in (BACKEND_Z2M, BACKEND_ZHA):
-        return backend
-    return None
-
-
 async def _fetch_z2m_topology(
     hass: HomeAssistant, entry: Any, timeout: int = DEFAULT_SCAN_TIMEOUT
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]] | None:
@@ -245,12 +260,14 @@ async def _fetch_z2m_topology(
             future.set_result(payload)
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             _LOGGER.error("Failed to parse Z2M networkmap response: %s", exc)
+            future.set_exception(RuntimeError(f"Invalid JSON in Z2M response: {exc}"))
 
     unsub = await mqtt.async_subscribe(hass, response_topic, on_message, qos=0)
+    _LOGGER.debug("Subscribed to %s, publishing request to %s", response_topic, request_topic)
 
     try:
         await mqtt.async_publish(hass, request_topic, '{"type":"raw","routes":true}', qos=0)
-        _LOGGER.debug("Published networkmap request to %s", request_topic)
+        _LOGGER.debug("Waiting for Z2M networkmap response (timeout: %ds)", timeout)
         response = await asyncio.wait_for(future, timeout=timeout)
     finally:
         unsub()
@@ -282,7 +299,8 @@ async def _fetch_zha_topology(
         zha_devices: list[dict[str, Any]] = [
             device.zha_device_info for device in gateway_proxy.device_proxies.values()
         ]
-    except (ImportError, ValueError, AttributeError, Exception):  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        _LOGGER.warning("Failed to fetch ZHA topology: %s", exc)
         return None
 
     if not zha_devices:

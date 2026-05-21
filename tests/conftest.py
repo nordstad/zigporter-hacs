@@ -1,6 +1,14 @@
 """Shared test fixtures for Zigporter HACS tests."""
 
+import sys
+from pathlib import Path
+
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import _ha_stubs  # noqa: E402
+
+_ha_stubs.install()
 
 
 @pytest.fixture

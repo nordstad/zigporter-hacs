@@ -18,9 +18,16 @@ DEFAULT_MQTT_TOPIC = "zigbee2mqtt"
 DEFAULT_WARN_LQI = 50
 DEFAULT_CRITICAL_LQI = 20
 DEFAULT_CACHE_TTL = 0  # 0 = manual refresh only (never auto-expire)
-DEFAULT_SCAN_TIMEOUT = 600
+DEFAULT_SCAN_TIMEOUT = 1000
 DEFAULT_HOP_COLORS = ["#101819", "#1C2829", "#2B3A3A", "#425352"]
 DEFAULT_HOP_OPACITY = 0.90
 
 BACKEND_Z2M = "zigbee2mqtt"
 BACKEND_ZHA = "zha"
+
+
+def _resolve_backend(backend: str | None) -> str | None:
+    """Resolve which backend to use."""
+    if backend in (BACKEND_Z2M, BACKEND_ZHA):
+        return backend
+    return None
