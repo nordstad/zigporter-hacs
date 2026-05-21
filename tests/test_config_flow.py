@@ -77,7 +77,7 @@ OPTIONS_SCHEMA = vol.Schema(
             int, vol.Range(min=0, max=3600)
         ),
         vol.Optional(CONF_SCAN_TIMEOUT, default=DEFAULT_SCAN_TIMEOUT): vol.All(
-            int, vol.Range(min=60, max=600)
+            int, vol.Range(min=60, max=1200)
         ),
         vol.Optional(CONF_HOP_COLOR_1, default=""): _validate_hex_color,
         vol.Optional(CONF_HOP_COLOR_2, default=""): _validate_hex_color,
@@ -134,7 +134,7 @@ class TestOptionsFlowSchema:
 
     def test_rejects_scan_timeout_too_high(self):
         with pytest.raises(vol.Invalid):
-            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_SCAN_TIMEOUT: 601})
+            OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M, CONF_SCAN_TIMEOUT: 1201})
 
     def test_defaults_applied_when_optional_omitted(self):
         data = OPTIONS_SCHEMA({CONF_BACKEND: BACKEND_Z2M})

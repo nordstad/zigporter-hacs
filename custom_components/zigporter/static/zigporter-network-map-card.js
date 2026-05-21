@@ -303,6 +303,7 @@ class ZigporterNetworkMapCard extends HTMLElement {
     } catch (err) {
       clearInterval(timerInterval);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.warn("Zigporter: scan failed after " + elapsed + "s —", err.message || err);
       mapEl.textContent = "";
       const errDiv = document.createElement("div");
       errDiv.className = "status";
@@ -480,6 +481,7 @@ class ZigporterNetworkMapCard extends HTMLElement {
 
 if (!customElements.get("zigporter-network-map-card")) {
   customElements.define("zigporter-network-map-card", ZigporterNetworkMapCard);
+  console.info("Zigporter: card registered");
 }
 
 window.customCards = window.customCards || [];

@@ -23,17 +23,23 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Zigporter integration (once per HA instance)."""
     static_dir = Path(__file__).parent / "static"
     card_path = "/zigporter/zigporter-network-map-card.js"
+    js_file = static_dir / "zigporter-network-map-card.js"
+
+    if not js_file.is_file():
+        _LOGGER.error("Card JS file not found at %s", js_file)
+
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(
                 url_path=card_path,
-                path=str(static_dir / "zigporter-network-map-card.js"),
+                path=str(js_file),
                 cache_headers=False,
             )
         ]
     )
     add_extra_js_url(hass, card_path)
     async_register_websocket_commands(hass)
+    _LOGGER.info("Registered card resource at %s", card_path)
     return True
 
 
