@@ -14,7 +14,6 @@ from homeassistant.core import HomeAssistant, callback
 
 from .const import (
     BACKEND_Z2M,
-    BACKEND_ZHA,
     CONF_BACKEND,
     CONF_CACHE_TTL,
     CONF_CRITICAL_LQI,
@@ -33,6 +32,7 @@ from .const import (
     DEFAULT_SCAN_TIMEOUT,
     DEFAULT_WARN_LQI,
     DOMAIN,
+    _resolve_backend,
 )
 from .network_map import (
     build_flat_zha_topology,
@@ -215,13 +215,6 @@ def _get_config_entry(hass: HomeAssistant):
     """Get the first Zigporter config entry."""
     entries = hass.config_entries.async_entries(DOMAIN)
     return entries[0] if entries else None
-
-
-def _resolve_backend(backend: str | None) -> str | None:
-    """Resolve which backend to use."""
-    if backend in (BACKEND_Z2M, BACKEND_ZHA):
-        return backend
-    return None
 
 
 async def _fetch_z2m_topology(

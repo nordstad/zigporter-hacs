@@ -24,3 +24,10 @@ DEFAULT_HOP_OPACITY = 0.90
 
 BACKEND_Z2M = "zigbee2mqtt"
 BACKEND_ZHA = "zha"
+
+
+def _resolve_backend(backend: str | None) -> str | None:
+    """Resolve which backend to use."""
+    if backend in (BACKEND_Z2M, BACKEND_ZHA):
+        return backend
+    return None

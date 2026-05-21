@@ -25,8 +25,8 @@ from custom_components.zigporter.const import (
     DEFAULT_MQTT_TOPIC,
     DEFAULT_SCAN_TIMEOUT,
     DEFAULT_WARN_LQI,
+    _resolve_backend,
 )
-from custom_components.zigporter.websocket_api import _resolve_backend
 
 _HEX_COLOR_RE = re.compile(r"^#?[0-9A-Fa-f]{6}$")
 

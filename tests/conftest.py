@@ -1,6 +1,77 @@
 """Shared test fixtures for Zigporter HACS tests."""
 
+import sys
+from types import ModuleType
+from unittest.mock import MagicMock
+
 import pytest
+
+
+def _install_ha_stubs() -> None:
+    """Install minimal homeassistant stub modules so tests run without the full HA package.
+
+    Only the symbols actually imported at module level in __init__.py and
+    websocket_api.py are stubbed. Everything else stays as MagicMock.
+    """
+
+    def _identity(func):
+        return func
+
+    # homeassistant.core
+    core = ModuleType("homeassistant.core")
+    core.HomeAssistant = object
+    core.callback = _identity
+
+    # homeassistant.config_entries — ConfigFlow uses domain= kwarg in class definition
+    class _ConfigFlowBase:
+        def __init_subclass__(cls, domain=None, **kwargs):
+            super().__init_subclass__(**kwargs)
+
+    config_entries = ModuleType("homeassistant.config_entries")
+    config_entries.ConfigEntry = object
+    config_entries.ConfigFlow = _ConfigFlowBase
+    config_entries.ConfigFlowResult = object
+    config_entries.OptionsFlow = object
+
+    # homeassistant.components.websocket_api — decorators execute at import time
+    ws_api = ModuleType("homeassistant.components.websocket_api")
+    ws_api.websocket_command = lambda schema: _identity
+    ws_api.async_response = _identity
+    ws_api.async_register_command = MagicMock()
+    ws_api.ActiveConnection = object
+
+    # homeassistant.components.mqtt
+    mqtt = ModuleType("homeassistant.components.mqtt")
+    mqtt.async_subscribe = MagicMock()
+    mqtt.async_publish = MagicMock()
+
+    # homeassistant.components.frontend / http
+    frontend = ModuleType("homeassistant.components.frontend")
+    frontend.add_extra_js_url = MagicMock()
+    http_mod = ModuleType("homeassistant.components.http")
+    http_mod.StaticPathConfig = MagicMock
+
+    # homeassistant.helpers.config_validation
+    cv = ModuleType("homeassistant.helpers.config_validation")
+    cv.config_entry_only_config_schema = lambda domain: {}
+
+    stubs = {
+        "homeassistant": ModuleType("homeassistant"),
+        "homeassistant.components": ModuleType("homeassistant.components"),
+        "homeassistant.components.frontend": frontend,
+        "homeassistant.components.http": http_mod,
+        "homeassistant.components.mqtt": mqtt,
+        "homeassistant.components.websocket_api": ws_api,
+        "homeassistant.config_entries": config_entries,
+        "homeassistant.core": core,
+        "homeassistant.helpers": ModuleType("homeassistant.helpers"),
+        "homeassistant.helpers.config_validation": cv,
+    }
+    for name, mod in stubs.items():
+        sys.modules.setdefault(name, mod)
+
+
+_install_ha_stubs()
 
 
 @pytest.fixture
