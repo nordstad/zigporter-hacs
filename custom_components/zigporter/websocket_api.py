@@ -260,9 +260,7 @@ async def _fetch_z2m_topology(
             future.set_result(payload)
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             _LOGGER.error("Failed to parse Z2M networkmap response: %s", exc)
-            future.set_exception(
-                RuntimeError(f"Invalid JSON in Z2M response: {exc}")
-            )
+            future.set_exception(RuntimeError(f"Invalid JSON in Z2M response: {exc}"))
 
     unsub = await mqtt.async_subscribe(hass, response_topic, on_message, qos=0)
     _LOGGER.debug("Subscribed to %s, publishing request to %s", response_topic, request_topic)
