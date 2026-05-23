@@ -1,251 +1,226 @@
-class ZigporterNetworkMapCard extends HTMLElement {
-  _svgEl = null;
-  _vb = null;
-  _vbInitial = null;
-  _zoomLevel = 1;
-  _pointers = new Map();
-  _lastPanPoint = null;
-  _lastPinchDist = null;
-  _lastPinchMid = null;
+import { LitElement, html, css, nothing } from "https://cdn.jsdelivr.net/npm/lit@3/+esm";
+import { unsafeHTML } from "https://cdn.jsdelivr.net/npm/lit@3/directives/unsafe-html.js/+esm";
+
+class ZigporterNetworkMapCard extends LitElement {
+  static properties = {
+    _config: { state: true },
+    _loading: { state: true },
+    _error: { state: true },
+    _svgContent: { state: true },
+    _stats: { state: true },
+    _elapsed: { state: true },
+    _buttonsDisabled: { state: true },
+  };
+
+  static styles = css`
+    :host { display: block; }
+    ha-card { overflow: hidden; }
+    .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 0; }
+    .header h2 { margin: 0; font-size: 16px; font-weight: 500; }
+    .stats { padding: 0 16px 4px; font-size: 12px; color: var(--secondary-text-color); }
+    .map-container { width: 100%; }
+    .map-container svg { width: 100%; height: calc(100vh - 140px); display: block; cursor: grab; touch-action: none; }
+    .map-container svg:active { cursor: grabbing; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px 32px; padding: 10px 16px; font-size: 13px; color: var(--secondary-text-color); border-top: 1px solid var(--divider-color, #333); }
+    .legend-section { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+    .legend-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .legend-dot.warn { box-shadow: 0 0 4px #f59e0b; border: 1.5px solid #f59e0b; }
+    .legend-dot.crit { box-shadow: 0 0 4px #ef4444; border: 1.5px solid #ef4444; }
+    .legend-line { width: 18px; height: 2px; flex-shrink: 0; border-radius: 1px; }
+    .status { padding: 48px 24px; text-align: center; color: var(--secondary-text-color); }
+    .error { color: var(--error-color); }
+    .spinner {
+      width: 32px; height: 32px; margin: 0 auto 16px;
+      border: 3px solid var(--divider-color, #444);
+      border-top-color: var(--primary-color);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .timer { font-size: 12px; margin-top: 8px; opacity: 0.7; }
+    .btn-group { display: flex; align-items: center; gap: 8px; }
+    .action-btn {
+      background: none; border: 1px solid var(--divider-color, #444);
+      border-radius: 4px; cursor: pointer; color: var(--primary-text-color);
+      padding: 4px 12px; font-size: 13px; font-weight: 500;
+    }
+    .action-btn:hover { background: var(--secondary-background-color); }
+    .action-btn:disabled { opacity: 0.3; cursor: default; }
+    a.action-btn { text-decoration: none; }
+  `;
 
   static getStubConfig() {
     return { title: "Zigbee Network Map", show_stats: true };
   }
 
+  constructor() {
+    super();
+    this._loading = false;
+    this._error = null;
+    this._svgContent = null;
+    this._stats = null;
+    this._elapsed = 0;
+    this._buttonsDisabled = false;
+    this._initialized = false;
+    this._hass = null;
+    this._svgEl = null;
+    this._vb = null;
+    this._vbInitial = null;
+    this._zoomLevel = 1;
+    this._pointers = new Map();
+    this._lastPanPoint = null;
+    this._lastPinchDist = null;
+    this._lastPinchMid = null;
+    this._timerInterval = null;
+
+    this._boundOnWheel = (e) => this._onWheel(e);
+    this._boundOnPointerDown = (e) => this._onPointerDown(e);
+    this._boundOnPointerMove = (e) => this._onPointerMove(e);
+    this._boundOnPointerUp = (e) => this._onPointerUp(e);
+  }
+
   setConfig(config) {
-    if (!config) config = {};
     this._config = {
-      title: config.title || "Zigbee Network Map",
-      show_stats: config.show_stats !== false,
+      title: (config && config.title) || "Zigbee Network Map",
+      show_stats: !config || config.show_stats !== false,
     };
   }
 
   set hass(hass) {
     this._hass = hass;
-    if (!this._initialized) {
+    if (!this._initialized && hass) {
       this._initialized = true;
-      this._render();
       this._fetchMap(false);
     }
   }
 
-  _render() {
-    if (!this.shadowRoot) {
-      this.attachShadow({ mode: "open" });
+  getCardSize() {
+    return 6;
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._timerInterval) clearInterval(this._timerInterval);
+    this._teardownPanZoom();
+  }
+
+  updated(changedProps) {
+    if (changedProps.has("_svgContent") && this._svgContent) {
+      const svgEl = this.renderRoot.querySelector(".map-container svg");
+      if (svgEl && svgEl !== this._svgEl) {
+        this._teardownPanZoom();
+        this._svgEl = svgEl;
+        this._initPanZoom(svgEl);
+      }
     }
+  }
 
-    const card = document.createElement("ha-card");
+  render() {
+    if (!this._config) return nothing;
 
-    const style = document.createElement("style");
-    style.textContent = `
-      :host { display: block; }
-      ha-card { overflow: hidden; }
-      .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 0; }
-      .header h2 { margin: 0; font-size: 16px; font-weight: 500; }
-      .stats { padding: 0 16px 4px; font-size: 12px; color: var(--secondary-text-color); }
-      .map-container { width: 100%; }
-      .map-container svg { width: 100%; height: calc(100vh - 140px); display: block; cursor: grab; touch-action: none; }
-      .map-container svg:active { cursor: grabbing; }
-      .legend { display: flex; flex-wrap: wrap; gap: 16px 32px; padding: 10px 16px; font-size: 13px; color: var(--secondary-text-color); border-top: 1px solid var(--divider-color, #333); }
-      .legend-section { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
-      .legend-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-      .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-      .legend-dot.warn { box-shadow: 0 0 4px #f59e0b; border: 1.5px solid #f59e0b; }
-      .legend-dot.crit { box-shadow: 0 0 4px #ef4444; border: 1.5px solid #ef4444; }
-      .legend-line { width: 18px; height: 2px; flex-shrink: 0; border-radius: 1px; }
-      .status { padding: 48px 24px; text-align: center; color: var(--secondary-text-color); }
-      .error { color: var(--error-color); }
-      .spinner {
-        width: 32px; height: 32px; margin: 0 auto 16px;
-        border: 3px solid var(--divider-color, #444);
-        border-top-color: var(--primary-color);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      .timer { font-size: 12px; margin-top: 8px; opacity: 0.7; }
-      .btn-group { display: flex; align-items: center; gap: 8px; }
-      .action-btn {
-        background: none; border: 1px solid var(--divider-color, #444);
-        border-radius: 4px; cursor: pointer; color: var(--primary-text-color);
-        padding: 4px 12px; font-size: 13px; font-weight: 500;
-      }
-      .action-btn:hover { background: var(--secondary-background-color); }
-      .action-btn:disabled { opacity: 0.3; cursor: default; }
-      a.action-btn { text-decoration: none; }
+    return html`
+      <ha-card>
+        ${this._renderHeader()}
+        ${this._config.show_stats && this._stats
+          ? html`<div class="stats">${this._stats}</div>`
+          : nothing}
+        ${this._renderLegend()}
+        <div class="map-container">
+          ${this._loading ? this._renderLoading()
+            : this._error ? this._renderError()
+            : this._renderMap()}
+        </div>
+      </ha-card>
     `;
+  }
 
-    const header = document.createElement("div");
-    header.className = "header";
+  _renderHeader() {
+    return html`
+      <div class="header">
+        <h2>${this._config.title}</h2>
+        <div class="btn-group">
+          <a class="action-btn" href="https://nordstad.github.io/zigporter-hacs/"
+             target="_blank" rel="noopener" title="Documentation">Help</a>
+          <button class="action-btn" title="Reset zoom"
+                  ?disabled=${this._buttonsDisabled}
+                  @click=${this._resetView}>Reset</button>
+          <button class="action-btn" title="Refresh network scan"
+                  ?disabled=${this._buttonsDisabled}
+                  @click=${() => this._fetchMap(true)}>Scan</button>
+        </div>
+      </div>
+    `;
+  }
 
-    const title = document.createElement("h2");
-    title.textContent = this._config.title;
+  _renderLegend() {
+    return html`
+      <div class="legend">
+        <div class="legend-section">
+          <span class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span><span>Coordinator</span></span>
+          <span class="legend-item"><span class="legend-dot" style="background:#0ea5e9"></span><span>Router</span></span>
+          <span class="legend-item"><span class="legend-dot" style="background:#475569"></span><span>End device</span></span>
+          <span class="legend-item"><span class="legend-dot warn" style="background:#0ea5e9"></span><span>Weak (&lt;50)</span></span>
+          <span class="legend-item"><span class="legend-dot crit" style="background:#0ea5e9"></span><span>Critical (&lt;20)</span></span>
+        </div>
+        <div class="legend-section">
+          <span class="legend-item"><span class="legend-line" style="background:#22c55e"></span><span>LQI ≥ 50</span></span>
+          <span class="legend-item"><span class="legend-line" style="background:#f59e0b"></span><span>LQI 20–50</span></span>
+          <span class="legend-item"><span class="legend-line" style="background:#ef4444"></span><span>LQI &lt; 20</span></span>
+          <span class="legend-item" style="opacity:0.7">Badge = path-min LQI</span>
+        </div>
+      </div>
+    `;
+  }
 
-    const refreshBtn = document.createElement("button");
-    refreshBtn.className = "action-btn";
-    refreshBtn.textContent = "Scan";
-    refreshBtn.title = "Refresh network scan";
-    refreshBtn.addEventListener("click", () => this._fetchMap(true));
+  _renderLoading() {
+    return html`
+      <div class="status">
+        <div class="spinner"></div>
+        <div>Scanning network…</div>
+        <div class="timer">This typically takes 1–4 minutes depending on network size. Timeout can be increased in integration options.</div>
+        <div class="timer">Scroll to zoom, drag to pan. On mobile: pinch to zoom. Use Reset to restore view.</div>
+        ${this._elapsed > 0 ? html`<div class="timer">${this._elapsed}s elapsed</div>` : nothing}
+      </div>
+    `;
+  }
 
-    const resetBtn = document.createElement("button");
-    resetBtn.className = "action-btn";
-    resetBtn.textContent = "Reset";
-    resetBtn.title = "Reset zoom";
-    resetBtn.addEventListener("click", () => this._resetView());
+  _renderError() {
+    return html`
+      <div class="status">
+        <div class="error">${this._error}</div>
+      </div>
+    `;
+  }
 
-    const helpBtn = document.createElement("a");
-    helpBtn.className = "action-btn";
-    helpBtn.textContent = "Help";
-    helpBtn.title = "Documentation";
-    helpBtn.href = "https://nordstad.github.io/zigporter-hacs/";
-    helpBtn.target = "_blank";
-    helpBtn.rel = "noopener";
-
-    const btnGroup = document.createElement("div");
-    btnGroup.className = "btn-group";
-    btnGroup.appendChild(helpBtn);
-    btnGroup.appendChild(resetBtn);
-    btnGroup.appendChild(refreshBtn);
-
-    header.appendChild(title);
-    header.appendChild(btnGroup);
-
-    const stats = document.createElement("div");
-    stats.className = "stats";
-    stats.id = "stats";
-
-    const mapContainer = document.createElement("div");
-    mapContainer.className = "map-container";
-    mapContainer.id = "map";
-
-    const loading = document.createElement("div");
-    loading.className = "status";
-    const spinner = document.createElement("div");
-    spinner.className = "spinner";
-    const loadMsg = document.createElement("div");
-    loadMsg.textContent = "Scanning network\u2026";
-    const timer = document.createElement("div");
-    timer.className = "timer";
-    timer.id = "timer";
-    loading.appendChild(spinner);
-    loading.appendChild(loadMsg);
-    loading.appendChild(timer);
-    mapContainer.appendChild(loading);
-
-    const legend = document.createElement("div");
-    legend.className = "legend";
-
-    const nodeSection = document.createElement("div");
-    nodeSection.className = "legend-section";
-    const edgeSection = document.createElement("div");
-    edgeSection.className = "legend-section";
-
-    const nodeItems = [
-      { color: "#f59e0b", label: "Coordinator", cls: "" },
-      { color: "#0ea5e9", label: "Router", cls: "" },
-      { color: "#475569", label: "End device", cls: "" },
-      { color: "#0ea5e9", label: "Weak (<50)", cls: "warn" },
-      { color: "#0ea5e9", label: "Critical (<20)", cls: "crit" },
-    ];
-    for (const item of nodeItems) {
-      const span = document.createElement("span");
-      span.className = "legend-item";
-      const dot = document.createElement("span");
-      dot.className = "legend-dot" + (item.cls ? " " + item.cls : "");
-      dot.style.background = item.color;
-      const text = document.createElement("span");
-      text.textContent = item.label;
-      span.appendChild(dot);
-      span.appendChild(text);
-      nodeSection.appendChild(span);
-    }
-
-    const edgeItems = [
-      { color: "#22c55e", label: "LQI ≥ 50" },
-      { color: "#f59e0b", label: "LQI 20–50" },
-      { color: "#ef4444", label: "LQI < 20" },
-    ];
-    for (const item of edgeItems) {
-      const span = document.createElement("span");
-      span.className = "legend-item";
-      const line = document.createElement("span");
-      line.className = "legend-line";
-      line.style.background = item.color;
-      const text = document.createElement("span");
-      text.textContent = item.label;
-      span.appendChild(line);
-      span.appendChild(text);
-      edgeSection.appendChild(span);
-    }
-    const badgeNote = document.createElement("span");
-    badgeNote.className = "legend-item";
-    badgeNote.style.opacity = "0.7";
-    badgeNote.textContent = "Badge = path-min LQI";
-    edgeSection.appendChild(badgeNote);
-
-    legend.appendChild(nodeSection);
-    legend.appendChild(edgeSection);
-
-    card.appendChild(header);
-    card.appendChild(stats);
-    card.appendChild(legend);
-    card.appendChild(mapContainer);
-
-    this.shadowRoot.textContent = "";
-    this.shadowRoot.appendChild(style);
-    this.shadowRoot.appendChild(card);
+  _renderMap() {
+    if (!this._svgContent) return nothing;
+    return html`${unsafeHTML(this._svgContent)}`;
   }
 
   async _fetchMap(forceRefresh) {
     if (!this._hass) return;
 
-    const mapEl = this.shadowRoot.getElementById("map");
-    const statsEl = this.shadowRoot.getElementById("stats");
-    const btns = this.shadowRoot.querySelectorAll(".action-btn");
+    this._buttonsDisabled = true;
+    this._error = null;
+    this._svgContent = null;
 
-    btns.forEach((b) => (b.disabled = true));
-
-    // Check if a scan is already in progress to set correct timer offset
     let timerOffset = 0;
     if (!forceRefresh) {
       try {
         const status = await this._hass.callWS({ type: "zigporter/scan_status" });
         if (status.scanning && status.scan_start_utc) {
           timerOffset = Math.floor((Date.now() - new Date(status.scan_start_utc).getTime()) / 1000);
-        } else if (!status.scanning) {
-          // No scan running and not force \u2014 will serve cache, skip spinner
         }
       } catch (_) { /* ignore */ }
     }
 
-    // Show loading state with spinner and elapsed timer
-    mapEl.textContent = "";
-    const statusDiv = document.createElement("div");
-    statusDiv.className = "status";
-    const spinner = document.createElement("div");
-    spinner.className = "spinner";
-    const msg = document.createElement("div");
-    msg.textContent = "Scanning network\u2026";
-    const hint = document.createElement("div");
-    hint.className = "timer";
-    hint.textContent = "This typically takes 1\u20134 minutes depending on network size. Timeout can be increased in integration options.";
-    const zoomHint = document.createElement("div");
-    zoomHint.className = "timer";
-    zoomHint.textContent = "Scroll to zoom, drag to pan. On mobile: pinch to zoom. Use Reset to restore view.";
-    const timerDiv = document.createElement("div");
-    timerDiv.className = "timer";
-    if (timerOffset > 0) timerDiv.textContent = timerOffset + "s elapsed";
-    statusDiv.appendChild(spinner);
-    statusDiv.appendChild(msg);
-    statusDiv.appendChild(hint);
-    statusDiv.appendChild(zoomHint);
-    statusDiv.appendChild(timerDiv);
-    mapEl.appendChild(statusDiv);
+    this._loading = true;
+    this._elapsed = timerOffset;
+    const startTime = Date.now() - timerOffset * 1000;
 
-    const startTime = Date.now() - (timerOffset * 1000);
-    const timerInterval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      timerDiv.textContent = elapsed + "s elapsed";
+    this._timerInterval = setInterval(() => {
+      this._elapsed = Math.floor((Date.now() - startTime) / 1000);
     }, 1000);
 
     try {
@@ -254,72 +229,64 @@ class ZigporterNetworkMapCard extends HTMLElement {
         force_refresh: forceRefresh,
       });
 
-      clearInterval(timerInterval);
+      clearInterval(this._timerInterval);
+      this._timerInterval = null;
 
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(result.svg, "image/svg+xml");
-      const svgEl = doc.documentElement;
-
-      if (svgEl.nodeName === "parsererror" || svgEl.querySelector("parsererror")) {
-        mapEl.textContent = "";
-        const errDiv = document.createElement("div");
-        errDiv.className = "status";
-        const errMsg = document.createElement("div");
-        errMsg.className = "error";
-        errMsg.textContent = "Failed to parse SVG";
-        errDiv.appendChild(errMsg);
-        mapEl.appendChild(errDiv);
+      const svgString = this._processSvg(result.svg);
+      if (!svgString) {
+        this._error = "Failed to parse SVG";
+        this._loading = false;
         return;
       }
 
-      // Synthesize viewBox from pixel dimensions before stripping them so the
-      // SVG scales correctly without a fixed size.
-      if (!svgEl.getAttribute("viewBox")) {
-        const w = svgEl.getAttribute("width");
-        const h = svgEl.getAttribute("height");
-        if (w && h) svgEl.setAttribute("viewBox", "0 0 " + w + " " + h);
-      }
-      svgEl.removeAttribute("width");
-      svgEl.removeAttribute("height");
-      svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
+      this._svgContent = svgString;
+      this._loading = false;
 
-      mapEl.textContent = "";
-      mapEl.appendChild(svgEl);
-      this._svgEl = svgEl;
-      this._initPanZoom(svgEl);
-
-      if (this._config.show_stats && statsEl) {
+      if (this._config.show_stats) {
         const duration = result.scan_duration_ms < 1000
           ? result.scan_duration_ms + "ms"
           : (result.scan_duration_ms / 1000).toFixed(1) + "s";
         const backendLabel = result.backend === "zha" ? "ZHA" : "Z2M";
-        let stats = backendLabel + " \u00b7 " + result.device_count + " devices \u00b7 " + result.max_depth + " hops \u00b7 " + duration;
+        let stats = `${backendLabel} · ${result.device_count} devices · ${result.max_depth} hops · ${duration}`;
         if (result.scan_timestamp) {
-          const d = new Date(result.scan_timestamp);
-          stats += " \u00b7 Scanned " + d.toLocaleString();
+          stats += ` · Scanned ${new Date(result.scan_timestamp).toLocaleString()}`;
         }
-        statsEl.textContent = stats;
+        this._stats = stats;
       }
     } catch (err) {
-      clearInterval(timerInterval);
+      clearInterval(this._timerInterval);
+      this._timerInterval = null;
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.warn("Zigporter: scan failed after " + elapsed + "s —", err.message || err);
-      mapEl.textContent = "";
-      const errDiv = document.createElement("div");
-      errDiv.className = "status";
-      const errMsg = document.createElement("div");
-      errMsg.className = "error";
-      errMsg.textContent = err.message || "Failed to load map";
-      const errTimer = document.createElement("div");
-      errTimer.className = "timer";
-      errTimer.textContent = "after " + elapsed + "s";
-      errDiv.appendChild(errMsg);
-      errDiv.appendChild(errTimer);
-      mapEl.appendChild(errDiv);
+      console.warn(`Zigporter: scan failed after ${elapsed}s —`, err.message || err);
+      this._error = err.message || "Failed to load map";
+      this._loading = false;
     } finally {
-      btns.forEach((b) => (b.disabled = false));
+      this._buttonsDisabled = false;
     }
   }
+
+  _processSvg(rawSvg) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawSvg, "image/svg+xml");
+    const svgEl = doc.documentElement;
+
+    if (svgEl.nodeName === "parsererror" || svgEl.querySelector("parsererror")) {
+      return null;
+    }
+
+    if (!svgEl.getAttribute("viewBox")) {
+      const w = svgEl.getAttribute("width");
+      const h = svgEl.getAttribute("height");
+      if (w && h) svgEl.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    }
+    svgEl.removeAttribute("width");
+    svgEl.removeAttribute("height");
+    svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+    return new XMLSerializer().serializeToString(svgEl);
+  }
+
+  // --- Pan/Zoom ---
 
   _initPanZoom(svgEl) {
     const vbStr = svgEl.getAttribute("viewBox");
@@ -333,11 +300,21 @@ class ZigporterNetworkMapCard extends HTMLElement {
     this._lastPinchDist = null;
     this._lastPinchMid = null;
 
-    svgEl.addEventListener("wheel", (e) => this._onWheel(e), { passive: false });
-    svgEl.addEventListener("pointerdown", (e) => this._onPointerDown(e));
-    svgEl.addEventListener("pointermove", (e) => this._onPointerMove(e));
-    svgEl.addEventListener("pointerup", (e) => this._onPointerUp(e));
-    svgEl.addEventListener("pointercancel", (e) => this._onPointerUp(e));
+    svgEl.addEventListener("wheel", this._boundOnWheel, { passive: false });
+    svgEl.addEventListener("pointerdown", this._boundOnPointerDown);
+    svgEl.addEventListener("pointermove", this._boundOnPointerMove);
+    svgEl.addEventListener("pointerup", this._boundOnPointerUp);
+    svgEl.addEventListener("pointercancel", this._boundOnPointerUp);
+  }
+
+  _teardownPanZoom() {
+    if (this._svgEl) {
+      this._svgEl.removeEventListener("wheel", this._boundOnWheel);
+      this._svgEl.removeEventListener("pointerdown", this._boundOnPointerDown);
+      this._svgEl.removeEventListener("pointermove", this._boundOnPointerMove);
+      this._svgEl.removeEventListener("pointerup", this._boundOnPointerUp);
+      this._svgEl.removeEventListener("pointercancel", this._boundOnPointerUp);
+    }
   }
 
   _screenToSVG(clientX, clientY) {
@@ -473,15 +450,40 @@ class ZigporterNetworkMapCard extends HTMLElement {
     this._lastPinchDist = dist;
     this._lastPinchMid = { x: midX, y: midY };
   }
-
-  getCardSize() {
-    return 6;
-  }
 }
+
+// --- Registration ---
 
 if (!customElements.get("zigporter-network-map-card")) {
   customElements.define("zigporter-network-map-card", ZigporterNetworkMapCard);
   console.info("Zigporter: card registered");
+
+  const tag = "zigporter-network-map-card";
+  let attempts = 0;
+  const tryReplace = () => {
+    let found = false;
+    function walk(root) {
+      if (!root) return;
+      const nodes = root.querySelectorAll("*");
+      for (const node of nodes) {
+        if (node.localName === "hui-error-card") {
+          const cfg = node._config || node.config;
+          if (cfg && cfg.message && cfg.message.includes(tag)) {
+            const card = document.createElement(tag);
+            card.setConfig({});
+            const ha = document.querySelector("home-assistant");
+            if (ha && ha.hass) card.hass = ha.hass;
+            node.parentElement.replaceChild(card, node);
+            found = true;
+          }
+        }
+        if (node.shadowRoot) walk(node.shadowRoot);
+      }
+    }
+    walk(document.body);
+    if (!found && ++attempts < 10) window.setTimeout(tryReplace, 500);
+  };
+  window.setTimeout(tryReplace, 500);
 }
 
 window.customCards = window.customCards || [];
@@ -492,4 +494,3 @@ if (!window.customCards.some((c) => c.type === "zigporter-network-map-card")) {
     description: "Visualize your Zigbee mesh network topology",
   });
 }
-
