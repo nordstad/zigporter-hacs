@@ -1,4 +1,9 @@
-import { LitElement, html, css, nothing } from "https://cdn.jsdelivr.net/npm/lit@3/+esm";
+import {
+  LitElement,
+  html,
+  css,
+  nothing,
+} from "https://cdn.jsdelivr.net/npm/lit@3/+esm";
 import { unsafeHTML } from "https://cdn.jsdelivr.net/npm/lit@3/directives/unsafe-html.js/+esm";
 
 class ZigporterNetworkMapCard extends LitElement {
@@ -13,41 +18,134 @@ class ZigporterNetworkMapCard extends LitElement {
   };
 
   static styles = css`
-    :host { display: block; }
-    ha-card { overflow: hidden; }
-    .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 0; }
-    .header h2 { margin: 0; font-size: 16px; font-weight: 500; }
-    .stats { padding: 0 16px 4px; font-size: 12px; color: var(--secondary-text-color); }
-    .map-container { width: 100%; }
-    .map-container svg { width: 100%; height: calc(100vh - 140px); display: block; cursor: grab; touch-action: none; }
-    .map-container svg:active { cursor: grabbing; }
-    .legend { display: flex; flex-wrap: wrap; gap: 16px 32px; padding: 10px 16px; font-size: 13px; color: var(--secondary-text-color); border-top: 1px solid var(--divider-color, #333); }
-    .legend-section { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
-    .legend-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .legend-dot.warn { box-shadow: 0 0 4px #f59e0b; border: 1.5px solid #f59e0b; }
-    .legend-dot.crit { box-shadow: 0 0 4px #ef4444; border: 1.5px solid #ef4444; }
-    .legend-line { width: 18px; height: 2px; flex-shrink: 0; border-radius: 1px; }
-    .status { padding: 48px 24px; text-align: center; color: var(--secondary-text-color); }
-    .error { color: var(--error-color); }
+    :host {
+      display: block;
+    }
+    ha-card {
+      overflow: hidden;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px 0;
+    }
+    .header h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    .stats {
+      padding: 0 16px 4px;
+      font-size: 12px;
+      color: var(--secondary-text-color);
+    }
+    .map-container {
+      width: 100%;
+    }
+    .map-container svg {
+      width: 100%;
+      height: calc(100vh - 140px);
+      display: block;
+      cursor: grab;
+      touch-action: none;
+    }
+    .map-container svg:active {
+      cursor: grabbing;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px 32px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: var(--secondary-text-color);
+      border-top: 1px solid var(--divider-color, #333);
+    }
+    .legend-section {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 14px;
+      align-items: center;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .legend-dot.warn {
+      box-shadow: 0 0 4px #f59e0b;
+      border: 1.5px solid #f59e0b;
+    }
+    .legend-dot.crit {
+      box-shadow: 0 0 4px #ef4444;
+      border: 1.5px solid #ef4444;
+    }
+    .legend-line {
+      width: 18px;
+      height: 2px;
+      flex-shrink: 0;
+      border-radius: 1px;
+    }
+    .status {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--secondary-text-color);
+    }
+    .error {
+      color: var(--error-color);
+    }
     .spinner {
-      width: 32px; height: 32px; margin: 0 auto 16px;
+      width: 32px;
+      height: 32px;
+      margin: 0 auto 16px;
       border: 3px solid var(--divider-color, #444);
       border-top-color: var(--primary-color);
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .timer { font-size: 12px; margin-top: 8px; opacity: 0.7; }
-    .btn-group { display: flex; align-items: center; gap: 8px; }
-    .action-btn {
-      background: none; border: 1px solid var(--divider-color, #444);
-      border-radius: 4px; cursor: pointer; color: var(--primary-text-color);
-      padding: 4px 12px; font-size: 13px; font-weight: 500;
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
-    .action-btn:hover { background: var(--secondary-background-color); }
-    .action-btn:disabled { opacity: 0.3; cursor: default; }
-    a.action-btn { text-decoration: none; }
+    .timer {
+      font-size: 12px;
+      margin-top: 8px;
+      opacity: 0.7;
+    }
+    .btn-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .action-btn {
+      background: none;
+      border: 1px solid var(--divider-color, #444);
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--primary-text-color);
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .action-btn:hover {
+      background: var(--secondary-background-color);
+    }
+    .action-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+    a.action-btn {
+      text-decoration: none;
+    }
   `;
 
   static getStubConfig() {
@@ -127,9 +225,11 @@ class ZigporterNetworkMapCard extends LitElement {
           : nothing}
         ${this._renderLegend()}
         <div class="map-container">
-          ${this._loading ? this._renderLoading()
-            : this._error ? this._renderError()
-            : this._renderMap()}
+          ${this._loading
+            ? this._renderLoading()
+            : this._error
+              ? this._renderError()
+              : this._renderMap()}
         </div>
       </ha-card>
     `;
@@ -140,14 +240,30 @@ class ZigporterNetworkMapCard extends LitElement {
       <div class="header">
         <h2>${this._config.title}</h2>
         <div class="btn-group">
-          <a class="action-btn" href="https://nordstad.github.io/zigporter-hacs/"
-             target="_blank" rel="noopener" title="Documentation">Help</a>
-          <button class="action-btn" title="Reset zoom"
-                  ?disabled=${this._buttonsDisabled}
-                  @click=${this._resetView}>Reset</button>
-          <button class="action-btn" title="Refresh network scan"
-                  ?disabled=${this._buttonsDisabled}
-                  @click=${() => this._fetchMap(true)}>Scan</button>
+          <a
+            class="action-btn"
+            href="https://nordstad.github.io/zigporter-hacs/"
+            target="_blank"
+            rel="noopener"
+            title="Documentation"
+            >Help</a
+          >
+          <button
+            class="action-btn"
+            title="Reset zoom"
+            ?disabled=${this._buttonsDisabled}
+            @click=${this._resetView}
+          >
+            Reset
+          </button>
+          <button
+            class="action-btn"
+            title="Refresh network scan"
+            ?disabled=${this._buttonsDisabled}
+            @click=${() => this._fetchMap(true)}
+          >
+            Scan
+          </button>
         </div>
       </div>
     `;
@@ -157,17 +273,43 @@ class ZigporterNetworkMapCard extends LitElement {
     return html`
       <div class="legend">
         <div class="legend-section">
-          <span class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span><span>Coordinator</span></span>
-          <span class="legend-item"><span class="legend-dot" style="background:#0ea5e9"></span><span>Router</span></span>
-          <span class="legend-item"><span class="legend-dot" style="background:#475569"></span><span>End device</span></span>
-          <span class="legend-item"><span class="legend-dot warn" style="background:#0ea5e9"></span><span>Weak (&lt;50)</span></span>
-          <span class="legend-item"><span class="legend-dot crit" style="background:#0ea5e9"></span><span>Critical (&lt;20)</span></span>
+          <span class="legend-item"
+            ><span class="legend-dot" style="background:#f59e0b"></span
+            ><span>Coordinator</span></span
+          >
+          <span class="legend-item"
+            ><span class="legend-dot" style="background:#0ea5e9"></span
+            ><span>Router</span></span
+          >
+          <span class="legend-item"
+            ><span class="legend-dot" style="background:#475569"></span
+            ><span>End device</span></span
+          >
+          <span class="legend-item"
+            ><span class="legend-dot warn" style="background:#0ea5e9"></span
+            ><span>Weak (&lt;50)</span></span
+          >
+          <span class="legend-item"
+            ><span class="legend-dot crit" style="background:#0ea5e9"></span
+            ><span>Critical (&lt;20)</span></span
+          >
         </div>
         <div class="legend-section">
-          <span class="legend-item"><span class="legend-line" style="background:#22c55e"></span><span>LQI ≥ 50</span></span>
-          <span class="legend-item"><span class="legend-line" style="background:#f59e0b"></span><span>LQI 20–50</span></span>
-          <span class="legend-item"><span class="legend-line" style="background:#ef4444"></span><span>LQI &lt; 20</span></span>
-          <span class="legend-item" style="opacity:0.7">Badge = path-min LQI</span>
+          <span class="legend-item"
+            ><span class="legend-line" style="background:#22c55e"></span
+            ><span>LQI ≥ 50</span></span
+          >
+          <span class="legend-item"
+            ><span class="legend-line" style="background:#f59e0b"></span
+            ><span>LQI 20–50</span></span
+          >
+          <span class="legend-item"
+            ><span class="legend-line" style="background:#ef4444"></span
+            ><span>LQI &lt; 20</span></span
+          >
+          <span class="legend-item" style="opacity:0.7"
+            >Badge = path-min LQI</span
+          >
         </div>
       </div>
     `;
@@ -178,9 +320,17 @@ class ZigporterNetworkMapCard extends LitElement {
       <div class="status">
         <div class="spinner"></div>
         <div>Scanning network…</div>
-        <div class="timer">This typically takes 1–4 minutes depending on network size. Timeout can be increased in integration options.</div>
-        <div class="timer">Scroll to zoom, drag to pan. On mobile: pinch to zoom. Use Reset to restore view.</div>
-        ${this._elapsed > 0 ? html`<div class="timer">${this._elapsed}s elapsed</div>` : nothing}
+        <div class="timer">
+          This typically takes 1–4 minutes depending on network size. Timeout
+          can be increased in integration options.
+        </div>
+        <div class="timer">
+          Scroll to zoom, drag to pan. On mobile: pinch to zoom. Use Reset to
+          restore view.
+        </div>
+        ${this._elapsed > 0
+          ? html`<div class="timer">${this._elapsed}s elapsed</div>`
+          : nothing}
       </div>
     `;
   }
@@ -208,11 +358,17 @@ class ZigporterNetworkMapCard extends LitElement {
     let timerOffset = 0;
     if (!forceRefresh) {
       try {
-        const status = await this._hass.callWS({ type: "zigporter/scan_status" });
+        const status = await this._hass.callWS({
+          type: "zigporter/scan_status",
+        });
         if (status.scanning && status.scan_start_utc) {
-          timerOffset = Math.floor((Date.now() - new Date(status.scan_start_utc).getTime()) / 1000);
+          timerOffset = Math.floor(
+            (Date.now() - new Date(status.scan_start_utc).getTime()) / 1000,
+          );
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) {
+        /* ignore */
+      }
     }
 
     this._loading = true;
@@ -243,9 +399,10 @@ class ZigporterNetworkMapCard extends LitElement {
       this._loading = false;
 
       if (this._config.show_stats) {
-        const duration = result.scan_duration_ms < 1000
-          ? result.scan_duration_ms + "ms"
-          : (result.scan_duration_ms / 1000).toFixed(1) + "s";
+        const duration =
+          result.scan_duration_ms < 1000
+            ? result.scan_duration_ms + "ms"
+            : (result.scan_duration_ms / 1000).toFixed(1) + "s";
         const backendLabel = result.backend === "zha" ? "ZHA" : "Z2M";
         let stats = `${backendLabel} · ${result.device_count} devices · ${result.max_depth} hops · ${duration}`;
         if (result.scan_timestamp) {
@@ -257,7 +414,10 @@ class ZigporterNetworkMapCard extends LitElement {
       clearInterval(this._timerInterval);
       this._timerInterval = null;
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.warn(`Zigporter: scan failed after ${elapsed}s —`, err.message || err);
+      console.warn(
+        `Zigporter: scan failed after ${elapsed}s —`,
+        err.message || err,
+      );
       this._error = err.message || "Failed to load map";
       this._loading = false;
     } finally {
@@ -270,7 +430,10 @@ class ZigporterNetworkMapCard extends LitElement {
     const doc = parser.parseFromString(rawSvg, "image/svg+xml");
     const svgEl = doc.documentElement;
 
-    if (svgEl.nodeName === "parsererror" || svgEl.querySelector("parsererror")) {
+    if (
+      svgEl.nodeName === "parsererror" ||
+      svgEl.querySelector("parsererror")
+    ) {
       return null;
     }
 
@@ -333,7 +496,10 @@ class ZigporterNetworkMapCard extends LitElement {
   }
 
   _applyViewBox() {
-    this._svgEl.setAttribute("viewBox", `${this._vb.x} ${this._vb.y} ${this._vb.w} ${this._vb.h}`);
+    this._svgEl.setAttribute(
+      "viewBox",
+      `${this._vb.x} ${this._vb.y} ${this._vb.w} ${this._vb.h}`,
+    );
   }
 
   _resetView() {
@@ -463,6 +629,7 @@ if (!customElements.get("zigporter-network-map-card")) {
   const tryReplace = () => {
     let found = false;
     function walk(root) {
+      /* c8 ignore next */
       if (!root) return;
       const nodes = root.querySelectorAll("*");
       for (const node of nodes) {

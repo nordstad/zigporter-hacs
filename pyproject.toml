@@ -10,6 +10,7 @@ dependencies = []
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=7.1.0",
     "ruff>=0.8",
     "voluptuous>=0.14",
 ]
@@ -24,3 +25,11 @@ select = ["E", "F", "W", "I", "UP", "BLE", "PLC"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["custom_components/zigporter"]
+omit = ["custom_components/zigporter/config_flow.py"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true

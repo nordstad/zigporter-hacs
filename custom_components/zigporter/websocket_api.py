@@ -101,7 +101,7 @@ async def ws_network_map(
         try:
             result = await asyncio.shield(scan_task)
             connection.send_result(msg["id"], result)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError:  # pragma: no cover
             return
         except Exception as exc:  # noqa: BLE001
             connection.send_error(msg["id"], "scan_failed", str(exc))
@@ -130,7 +130,7 @@ async def ws_network_map(
 
     try:
         result = await asyncio.shield(task)
-    except asyncio.CancelledError:
+    except asyncio.CancelledError:  # pragma: no cover
         return
     except Exception as exc:  # noqa: BLE001
         connection.send_error(msg["id"], "scan_failed", str(exc))
@@ -253,7 +253,7 @@ async def _fetch_z2m_topology(
 
     @callback
     def on_message(msg) -> None:
-        if future.done():
+        if future.done():  # pragma: no cover
             return
         try:
             payload = json.loads(msg.payload)
