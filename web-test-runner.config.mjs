@@ -20,7 +20,10 @@ function rewriteCdnImports() {
 export default {
   files: "tests/js/**/*.test.js",
   nodeResolve: true,
-  browsers: [playwrightLauncher({ product: "chromium" })],
+  browsers: [
+    playwrightLauncher({ product: "chromium" }),
+    playwrightLauncher({ product: "firefox" }),
+  ],
   plugins: [rewriteCdnImports()],
   coverage: true,
   coverageConfig: {
