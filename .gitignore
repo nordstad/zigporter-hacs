@@ -221,3 +221,7 @@ hacs-plan/
 
 .mcp.json
 custom_components/zigporter/.DS_Store
+
+# Node
+node_modules/
+coverage/

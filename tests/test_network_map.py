@@ -1,6 +1,7 @@
 """Tests for network_map graph algorithms."""
 
 from custom_components.zigporter.network_map import (
+    _zha_lqi,
     build_flat_zha_topology,
     build_routing_tree,
     build_zha_topology_from_devices,
@@ -20,6 +21,23 @@ class TestNormalizeIeee:
 
     def test_uppercase(self):
         assert normalize_ieee("00124B0001ABCDEF") == "00124b0001abcdef"
+
+
+class TestZhaLqi:
+    def test_none_returns_zero(self):
+        assert _zha_lqi(None) == 0
+
+    def test_string_int(self):
+        assert _zha_lqi("180") == 180
+
+    def test_int_passthrough(self):
+        assert _zha_lqi(200) == 200
+
+    def test_invalid_string_returns_zero(self):
+        assert _zha_lqi("bad") == 0
+
+    def test_non_numeric_type_returns_zero(self):
+        assert _zha_lqi([1, 2, 3]) == 0
 
 
 class TestBuildRoutingTree:
@@ -87,11 +105,31 @@ class TestBuildZhaTopologyFromDevices:
             assert ":" not in ieee
             assert ieee == ieee.lower()
 
+    def test_skips_device_without_ieee(self):
+        devices = [
+            {"ieee": "", "name": "Ghost", "device_type": "Router"},
+            {"ieee": "00:11:22:33:44:55:66:77", "name": "Real", "device_type": "Router"},
+        ]
+        nodes, _ = build_zha_topology_from_devices(devices)
+        assert len(nodes) == 1
+
+    def test_skips_neighbor_without_ieee(self):
+        devices = [
+            {
+                "ieee": "00:11:22:33:44:55:66:77",
+                "name": "Router",
+                "device_type": "Router",
+                "neighbors": [{"ieee": "", "lqi": "100", "relationship": "Child"}],
+            },
+        ]
+        nodes, links = build_zha_topology_from_devices(devices)
+        assert len(nodes) == 1
+        assert len(links) == 0
+
 
 class TestBuildFlatZhaTopology:
     def test_all_at_depth_one(self, sample_zha_devices_no_neighbors):
         nodes, links = build_flat_zha_topology(sample_zha_devices_no_neighbors)
-        # All non-coordinator nodes should link to coordinator
         assert len(links) == 2
         coord_ieee = normalize_ieee("00:12:4b:00:01:ab:cd:ef")
         for link in links:
@@ -101,3 +139,57 @@ class TestBuildFlatZhaTopology:
         nodes, links = build_flat_zha_topology([])
         assert nodes == {}
         assert links == []
+
+    def test_skips_device_without_ieee(self):
+        devices = [
+            {"ieee": "00:11:22:33:44:55:66:77", "name": "Coord", "device_type": "Coordinator"},
+            {"ieee": "", "name": "Ghost", "device_type": "Router"},
+        ]
+        nodes, links = build_flat_zha_topology(devices)
+        assert len(nodes) == 1
+        assert len(links) == 0
+
+
+class TestBuildRoutingTreeEdgeCases:
+    def test_previous_child_relationship_skipped(self):
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "type": "Coordinator"},
+            "0xrouter": {"ieeeAddr": "0xrouter", "type": "Router"},
+        }
+        links = [
+            {
+                "source": {"ieeeAddr": "0xrouter"},
+                "target": {"ieeeAddr": "0xcoord"},
+                "lqi": 200,
+                "relationship": "PreviousChild",
+            },
+            {
+                "source": {"ieeeAddr": "0xcoord"},
+                "target": {"ieeeAddr": "0xrouter"},
+                "lqi": 180,
+                "relationship": "",
+            },
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        assert parent_map["0xrouter"] == "0xcoord"
+
+    def test_depth_cascade_correction(self):
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "type": "Coordinator"},
+            "0xa": {"ieeeAddr": "0xa", "type": "Router"},
+            "0xb": {"ieeeAddr": "0xb", "type": "Router"},
+            "0xc": {"ieeeAddr": "0xc", "type": "EndDevice"},
+        }
+        links = [
+            {"source": {"ieeeAddr": "0xa"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 200},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xa"}, "lqi": 200},
+            {"source": {"ieeeAddr": "0xb"}, "target": {"ieeeAddr": "0xa"}, "lqi": 150},
+            {"source": {"ieeeAddr": "0xa"}, "target": {"ieeeAddr": "0xb"}, "lqi": 150},
+            {"source": {"ieeeAddr": "0xc"}, "target": {"ieeeAddr": "0xb"}, "lqi": 100},
+            {"source": {"ieeeAddr": "0xb"}, "target": {"ieeeAddr": "0xc"}, "lqi": 100},
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        assert depth_map["0xcoord"] == 0
+        assert depth_map["0xa"] == 1
+        assert depth_map["0xb"] == 2
+        assert depth_map["0xc"] == 3

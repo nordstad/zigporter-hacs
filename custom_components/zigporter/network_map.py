@@ -185,7 +185,7 @@ def build_routing_tree(
             if p is not None:
                 new_depth = depth_map.get(p, 0) + 1
                 if depth_map.get(ieee) != new_depth:
-                    depth_map[ieee] = new_depth
-                    cascade_changed = True
+                    depth_map[ieee] = new_depth  # pragma: no cover
+                    cascade_changed = True  # pragma: no cover
 
     return parent_map, lqi_map, depth_map

@@ -35,15 +35,32 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx prettier --check "custom_components/zigporter/static/**/*.js" "tests/js/**/*.js" "web-test-runner.config.mjs"
 
-  test:
-    name: Tests
+  test-python:
+    name: Python Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
       - run: uv sync
       - run: uv run pytest
+
+  test-js:
+    name: JS Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox
+      - run: npm test
 
   demo-svg:
     name: Demo SVG up-to-date

@@ -2,8 +2,14 @@
 
 import xml.etree.ElementTree as ET
 
+import pytest
+
 from custom_components.zigporter.network_map import build_routing_tree
-from custom_components.zigporter.network_map_svg import render_svg
+from custom_components.zigporter.network_map_svg import (
+    _compute_layout,
+    _compute_path_min_lqi,
+    render_svg,
+)
 
 
 class TestRenderSvg:
@@ -113,6 +119,152 @@ class TestRenderSvg:
         ET.fromstring(svg)
         # Raw < and > should NOT appear unescaped
         assert "<script>" not in svg
+
+
+class TestSvgEdgeCases:
+    def test_no_coordinator_returns_empty_svg(self):
+        nodes = {"0xr": {"ieeeAddr": "0xr", "friendlyName": "Router", "type": "Router"}}
+        parent_map = {"0xr": None}
+        svg = render_svg(nodes=nodes, parent_map=parent_map, lqi_map={}, depth_map={"0xr": 0})
+        assert "No devices found" in svg
+
+    def test_critical_lqi_glow_filter(self):
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
+            "0xweak": {"ieeeAddr": "0xweak", "friendlyName": "Weak Router", "type": "Router"},
+        }
+        links = [
+            {"source": {"ieeeAddr": "0xweak"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 10},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xweak"}, "lqi": 10},
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        svg = render_svg(
+            nodes=nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            critical_lqi=20,
+        )
+        assert "glow-crit" in svg
+
+    def test_warn_lqi_glow_filter(self):
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
+            "0xwarn": {"ieeeAddr": "0xwarn", "friendlyName": "Warn Router", "type": "Router"},
+        }
+        links = [
+            {"source": {"ieeeAddr": "0xwarn"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 30},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xwarn"}, "lqi": 30},
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        svg = render_svg(
+            nodes=nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            warn_lqi=50,
+            critical_lqi=20,
+        )
+        assert "glow-warn" in svg
+
+    def test_collision_resolution_with_many_nodes(self):
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
+        }
+        links = []
+        for i in range(12):
+            ieee = f"0xn{i:02d}"
+            nodes[ieee] = {"ieeeAddr": ieee, "friendlyName": f"Node {i}", "type": "Router"}
+            links.append(
+                {
+                    "source": {"ieeeAddr": ieee},
+                    "target": {"ieeeAddr": "0xcoord"},
+                    "lqi": 200,
+                }
+            )
+            links.append(
+                {
+                    "source": {"ieeeAddr": "0xcoord"},
+                    "target": {"ieeeAddr": ieee},
+                    "lqi": 200,
+                }
+            )
+
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        svg = render_svg(nodes=nodes, parent_map=parent_map, lqi_map=lqi_map, depth_map=depth_map)
+        root = ET.fromstring(svg)
+        assert root.tag == "{http://www.w3.org/2000/svg}svg" or root.tag == "svg"
+
+    def test_critical_edge_color(self):
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
+            "0xdev": {"ieeeAddr": "0xdev", "friendlyName": "Device", "type": "EndDevice"},
+        }
+        links = [
+            {"source": {"ieeeAddr": "0xdev"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 5},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xdev"}, "lqi": 5},
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        svg = render_svg(
+            nodes=nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            critical_lqi=20,
+        )
+        assert "#ef4444" in svg
+
+    def test_angular_overflow_clamping_and_collision(self):
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
+        }
+        links = []
+        for i in range(50):
+            ieee = f"0xn{i:02d}"
+            nodes[ieee] = {"ieeeAddr": ieee, "friendlyName": f"N{i}", "type": "Router"}
+            links.append(
+                {
+                    "source": {"ieeeAddr": ieee},
+                    "target": {"ieeeAddr": "0xcoord"},
+                    "lqi": 200,
+                }
+            )
+            links.append(
+                {
+                    "source": {"ieeeAddr": "0xcoord"},
+                    "target": {"ieeeAddr": ieee},
+                    "lqi": 200,
+                }
+            )
+
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        svg = render_svg(nodes=nodes, parent_map=parent_map, lqi_map=lqi_map, depth_map=depth_map)
+        ET.fromstring(svg)
+
+    def test_path_min_lqi_cache_hit(self):
+        # 0xb traverses up through 0xa to 0xcoord, caching all three.
+        # When the loop then visits 0xa (already cached), line 153 fires.
+        parent_map = {"0xb": "0xa", "0xa": "0xcoord", "0xcoord": None}
+        lqi_map = {"0xa": 200, "0xb": 100}
+        result = _compute_path_min_lqi(parent_map, lqi_map)
+        assert result["0xb"] == 100
+        assert result["0xa"] == 200
+        assert result["0xcoord"] == 255
+
+    def test_compute_layout_bad_keys_raises(self):
+        nodes = {"0xcoord": {"ieeeAddr": "0xcoord", "type": "Coordinator"}}
+        parent_map = {"0xcoord": None, "0xghost": "0xcoord"}
+        with pytest.raises(ValueError, match="parent_map contains IEEEs not in nodes"):
+            _compute_layout(nodes, parent_map, {}, {"0xcoord": 0, "0xghost": 1}, {})
+
+    def test_compute_layout_bad_parent_raises(self):
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "type": "Coordinator"},
+            "0xa": {"ieeeAddr": "0xa", "type": "Router"},
+        }
+        parent_map = {"0xcoord": None, "0xa": "0xghost"}
+        with pytest.raises(ValueError, match="parent_map references parent IEEEs not in nodes"):
+            _compute_layout(nodes, parent_map, {}, {"0xcoord": 0, "0xa": 1}, {})
 
 
 class TestCustomHopColors:
