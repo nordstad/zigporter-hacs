@@ -482,6 +482,34 @@ class ZigporterNetworkMapCard extends HTMLElement {
 if (!customElements.get("zigporter-network-map-card")) {
   customElements.define("zigporter-network-map-card", ZigporterNetworkMapCard);
   console.info("Zigporter: card registered");
+
+  // Replace stale error placeholders once Lovelace finishes rendering
+  const tag = "zigporter-network-map-card";
+  let attempts = 0;
+  const tryReplace = () => {
+    let found = false;
+    function walk(root) {
+      if (!root) return;
+      const nodes = root.querySelectorAll("*");
+      for (const node of nodes) {
+        if (node.localName === "hui-error-card") {
+          const cfg = node._config || node.config;
+          if (cfg && cfg.message && cfg.message.includes(tag)) {
+            const card = document.createElement(tag);
+            card.setConfig({});
+            const ha = document.querySelector("home-assistant");
+            if (ha && ha.hass) card.hass = ha.hass;
+            node.parentElement.replaceChild(card, node);
+            found = true;
+          }
+        }
+        if (node.shadowRoot) walk(node.shadowRoot);
+      }
+    }
+    walk(document.body);
+    if (!found && ++attempts < 10) window.setTimeout(tryReplace, 500);
+  };
+  window.setTimeout(tryReplace, 500);
 }
 
 window.customCards = window.customCards || [];
