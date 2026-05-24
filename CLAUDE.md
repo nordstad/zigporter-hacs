@@ -24,8 +24,12 @@ Custom Home Assistant integration (HACS) that renders a radial Zigbee network ma
 ## Development
 
 ```bash
-uv run pytest tests/ -v          # 23 tests
+uv run pytest tests/ -v          # Python tests
+npm test                         # JS tests (coverage must be 100%)
+npx prettier --check "custom_components/zigporter/static/**/*.js" "tests/js/**/*.js" "web-test-runner.config.mjs"
 ```
+
+Before committing, always run linting and both test suites to catch CI failures locally.
 
 ## Git Workflow
 

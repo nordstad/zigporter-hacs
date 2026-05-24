@@ -393,6 +393,7 @@ def _draw_node(
         "fill": fill,
         "stroke": stroke_color,
         "stroke-width": str(stroke_w),
+        "data-name": name,
     }
     if glow_filter:
         circle_attrs["filter"] = glow_filter

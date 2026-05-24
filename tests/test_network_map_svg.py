@@ -41,6 +41,21 @@ class TestRenderSvg:
         assert "Kitchen Router" in svg
         assert "Bedroom Sensor" in svg
 
+    def test_circles_have_data_name(self, sample_z2m_nodes, sample_z2m_links):
+        parent_map, lqi_map, depth_map = build_routing_tree(sample_z2m_nodes, sample_z2m_links)
+        svg = render_svg(
+            nodes=sample_z2m_nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+        )
+        root = ET.fromstring(svg)
+        circles = root.findall(".//{http://www.w3.org/2000/svg}circle[@data-name]")
+        names = [c.get("data-name") for c in circles]
+        assert "Living Room Router" in names
+        assert "Kitchen Router" in names
+        assert "Bedroom Sensor" in names
+
     def test_contains_lqi_annotations(self, sample_z2m_nodes, sample_z2m_links):
         parent_map, lqi_map, depth_map = build_routing_tree(sample_z2m_nodes, sample_z2m_links)
         svg = render_svg(
