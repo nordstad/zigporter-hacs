@@ -17,6 +17,10 @@ class ZigporterNetworkMapCard extends LitElement {
     _buttonsDisabled: { state: true },
     _meshVisible: { state: true },
     _alertsVisible: { state: true },
+    _searchOpen: { state: true },
+    _searchQuery: { state: true },
+    _searchResults: { state: true },
+    _searchActiveIndex: { state: true },
   };
 
   static styles = css`
@@ -27,6 +31,7 @@ class ZigporterNetworkMapCard extends LitElement {
       overflow: hidden;
     }
     .header {
+      position: relative;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -163,6 +168,44 @@ class ZigporterNetworkMapCard extends LitElement {
       color: var(--text-primary-color, #fff);
       border-color: var(--primary-color);
     }
+    .search-input {
+      flex: 1;
+      background: none;
+      border: 1px solid var(--divider-color, #444);
+      border-radius: 4px;
+      color: var(--primary-text-color);
+      font-size: 14px;
+      padding: 4px 8px;
+      outline: none;
+      min-width: 0;
+    }
+    .search-input:focus {
+      border-color: var(--primary-color);
+    }
+    .search-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 16px;
+      right: 16px;
+      background: var(--card-background-color, #1e1e1e);
+      border: 1px solid var(--divider-color, #444);
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .search-dropdown-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--primary-text-color);
+    }
+    .search-dropdown-item:hover,
+    .search-dropdown-item.active {
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+    }
   `;
 
   static getStubConfig() {
@@ -190,6 +233,11 @@ class ZigporterNetworkMapCard extends LitElement {
     this._lastPinchDist = null;
     this._lastPinchMid = null;
     this._timerInterval = null;
+    this._searchOpen = false;
+    this._searchQuery = "";
+    this._searchResults = [];
+    this._searchActiveIndex = -1;
+    this._deviceNames = [];
 
     this._boundOnWheel = (e) => this._onWheel(e);
     this._boundOnPointerDown = (e) => this._onPointerDown(e);
@@ -229,6 +277,7 @@ class ZigporterNetworkMapCard extends LitElement {
         this._teardownPanZoom();
         this._svgEl = svgEl;
         this._initPanZoom(svgEl);
+        this._extractDeviceNames();
         if (this._meshVisible) {
           const meshGroup = svgEl.querySelector(".mesh-links");
           if (meshGroup) meshGroup.style.display = "block";
@@ -264,8 +313,25 @@ class ZigporterNetworkMapCard extends LitElement {
   _renderHeader() {
     return html`
       <div class="header">
-        <h2>${this._config.title}</h2>
+        ${this._searchOpen
+          ? html`<input
+              class="search-input"
+              type="text"
+              placeholder="Search devices…"
+              .value=${this._searchQuery}
+              @input=${this._onSearchInput}
+              @keydown=${this._onSearchKeydown}
+              @blur=${this._onSearchBlur}
+            />`
+          : html`<h2>${this._config.title}</h2>`}
         <div class="btn-group">
+          <button
+            class="action-btn"
+            title="Search"
+            @click=${this._toggleSearch}
+          >
+            Search
+          </button>
           <button
             class="toggle-btn ${!this._meshVisible ? "active" : ""}"
             @click=${() => this._setMeshVisible(false)}
@@ -325,6 +391,20 @@ class ZigporterNetworkMapCard extends LitElement {
             Scan
           </button>
         </div>
+        ${this._searchOpen && this._searchResults.length > 0
+          ? html`<div class="search-dropdown">
+              ${this._searchResults.map(
+                (name, i) => html`
+                  <div
+                    class="search-dropdown-item ${i === this._searchActiveIndex ? "active" : ""}"
+                    @mousedown=${() => this._selectSearchResult(name)}
+                  >
+                    ${name}
+                  </div>
+                `,
+              )}
+            </div>`
+          : nothing}
       </div>
     `;
   }
@@ -534,6 +614,149 @@ class ZigporterNetworkMapCard extends LitElement {
     svgEl.classList.toggle("alerts-mode", visible);
   }
 
+  // --- Search ---
+
+  _extractDeviceNames() {
+    const svg = this.renderRoot.querySelector(".map-container svg");
+    if (!svg) return;
+    const circles = svg.querySelectorAll("circle[data-name]");
+    this._deviceNames = [...circles].map((c) => c.getAttribute("data-name"));
+  }
+
+  _toggleSearch() {
+    this._searchOpen = !this._searchOpen;
+    this._searchQuery = "";
+    this._searchResults = [];
+    this._searchActiveIndex = -1;
+    if (this._searchOpen) {
+      this._extractDeviceNames();
+      this.updateComplete.then(() => {
+        const input = this.renderRoot.querySelector(".search-input");
+        if (input) input.focus();
+      });
+    } else {
+      this._clearHighlight();
+    }
+  }
+
+  _onSearchInput(e) {
+    this._searchQuery = e.target.value;
+    this._searchActiveIndex = -1;
+    if (!this._searchQuery) {
+      this._searchResults = [];
+      this._clearHighlight();
+      return;
+    }
+    const q = this._searchQuery.toLowerCase();
+    this._searchResults = this._deviceNames
+      .filter((name) => name.toLowerCase().includes(q))
+      .slice(0, 20);
+  }
+
+  _onSearchKeydown(e) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      this._searchActiveIndex = Math.min(
+        this._searchActiveIndex + 1,
+        this._searchResults.length - 1,
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      this._searchActiveIndex = Math.max(this._searchActiveIndex - 1, -1);
+    } else if (e.key === "Enter" && this._searchActiveIndex >= 0) {
+      e.preventDefault();
+      this._selectSearchResult(this._searchResults[this._searchActiveIndex]);
+    } else if (e.key === "Escape") {
+      this._toggleSearch();
+    }
+  }
+
+  _onSearchBlur() {
+    setTimeout(() => {
+      if (!this._searchQuery) {
+        this._searchOpen = false;
+        this._searchResults = [];
+        this._clearHighlight();
+      } else {
+        this._searchResults = [];
+      }
+    }, 200);
+  }
+
+  _selectSearchResult(name) {
+    this._searchResults = [];
+    this._searchQuery = name;
+    this._navigateToNode(name);
+  }
+
+  _navigateToNode(name) {
+    const svg = this.renderRoot.querySelector(".map-container svg");
+    if (!svg || !this._vb) return;
+    const circle = svg.querySelector(`circle[data-name="${CSS.escape(name)}"]`);
+    if (!circle) return;
+
+    const cx = parseFloat(circle.getAttribute("cx"));
+    const cy = parseFloat(circle.getAttribute("cy"));
+
+    const minW = this._vbInitial.w / 8;
+    const targetW = Math.max(minW, Math.min(600, this._vbInitial.w));
+    const aspect = this._vbInitial.h / this._vbInitial.w;
+    const targetH = targetW * aspect;
+
+    this._vb.w = targetW;
+    this._vb.h = targetH;
+    this._vb.x = cx - targetW / 2;
+    this._vb.y = cy - targetH / 2;
+    this._zoomLevel = this._vbInitial.w / this._vb.w;
+    this._applyViewBox();
+    this._highlightNode(circle);
+  }
+
+  _highlightNode(circle) {
+    this._clearHighlight();
+    const svg = this.renderRoot.querySelector(".map-container svg");
+    if (!svg) return;
+
+    const cx = circle.getAttribute("cx");
+    const cy = circle.getAttribute("cy");
+    const ns = "http://www.w3.org/2000/svg";
+    const ring = document.createElementNS(ns, "circle");
+    ring.setAttribute("cx", cx);
+    ring.setAttribute("cy", cy);
+    ring.setAttribute("r", "35");
+    ring.setAttribute("fill", "none");
+    ring.setAttribute("stroke", "#ffffff");
+    ring.setAttribute("stroke-width", "3");
+    ring.classList.add("search-highlight");
+    svg.appendChild(ring);
+
+    const animate = document.createElementNS(ns, "animate");
+    animate.setAttribute("attributeName", "r");
+    animate.setAttribute("from", "35");
+    animate.setAttribute("to", "55");
+    animate.setAttribute("dur", "1s");
+    animate.setAttribute("repeatCount", "2");
+    animate.setAttribute("fill", "freeze");
+    ring.appendChild(animate);
+
+    const animateOpacity = document.createElementNS(ns, "animate");
+    animateOpacity.setAttribute("attributeName", "opacity");
+    animateOpacity.setAttribute("from", "1");
+    animateOpacity.setAttribute("to", "0");
+    animateOpacity.setAttribute("dur", "1s");
+    animateOpacity.setAttribute("repeatCount", "2");
+    animateOpacity.setAttribute("fill", "freeze");
+    ring.appendChild(animateOpacity);
+
+    setTimeout(() => ring.remove(), 2100);
+  }
+
+  _clearHighlight() {
+    const svg = this.renderRoot.querySelector(".map-container svg");
+    if (!svg) return;
+    svg.querySelectorAll(".search-highlight").forEach((el) => el.remove());
+  }
+
   // --- Pan/Zoom ---
 
   _initPanZoom(svgEl) {
@@ -592,6 +815,11 @@ class ZigporterNetworkMapCard extends LitElement {
     this._vb = { ...this._vbInitial };
     this._zoomLevel = 1;
     this._applyViewBox();
+    this._searchOpen = false;
+    this._searchQuery = "";
+    this._searchResults = [];
+    this._searchActiveIndex = -1;
+    this._clearHighlight();
   }
 
   _zoomBy(factor) {
