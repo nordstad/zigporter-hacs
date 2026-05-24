@@ -147,6 +147,9 @@ class ZigporterNetworkMapCard extends LitElement {
         align-items: flex-end;
         gap: 4px;
       }
+      .map-container svg {
+        height: calc(100vh - 200px);
+      }
     }
     .action-btn {
       background: none;
