@@ -294,6 +294,22 @@ class ZigporterNetworkMapCard extends LitElement {
           >
           <button
             class="action-btn"
+            title="Zoom in"
+            ?disabled=${this._buttonsDisabled}
+            @click=${() => this._zoomBy(0.7)}
+          >
+            +
+          </button>
+          <button
+            class="action-btn"
+            title="Zoom out"
+            ?disabled=${this._buttonsDisabled}
+            @click=${() => this._zoomBy(1 / 0.7)}
+          >
+            −
+          </button>
+          <button
+            class="action-btn"
             title="Reset zoom"
             ?disabled=${this._buttonsDisabled}
             @click=${this._resetView}
@@ -578,26 +594,45 @@ class ZigporterNetworkMapCard extends LitElement {
     this._applyViewBox();
   }
 
-  _onWheel(e) {
-    e.preventDefault();
+  _zoomBy(factor) {
     if (!this._vb) return;
-    const delta = -Math.sign(e.deltaY);
-    const factor = delta > 0 ? 0.8 : 1.25;
-
     const newZoom = this._vbInitial.w / (this._vb.w * factor);
     if (newZoom < 1 || newZoom > 8) return;
-
-    const svgPt = this._screenToSVG(e.clientX, e.clientY);
+    const cx = this._vb.x + this._vb.w / 2;
+    const cy = this._vb.y + this._vb.h / 2;
     this._vb.w *= factor;
     this._vb.h *= factor;
-
-    const rect = this._svgEl.getBoundingClientRect();
-    const fracX = (e.clientX - rect.left) / rect.width;
-    const fracY = (e.clientY - rect.top) / rect.height;
-    this._vb.x = svgPt.x - fracX * this._vb.w;
-    this._vb.y = svgPt.y - fracY * this._vb.h;
-
+    this._vb.x = cx - this._vb.w / 2;
+    this._vb.y = cy - this._vb.h / 2;
     this._zoomLevel = this._vbInitial.w / this._vb.w;
+    this._applyViewBox();
+  }
+
+  _onWheel(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!this._vb) return;
+
+    const isMouseWheel = e.deltaMode !== 0 || (Math.abs(e.deltaY) > 50 && Math.abs(e.deltaX) < 5);
+    if (e.ctrlKey || isMouseWheel) {
+      // Pinch gesture (ctrlKey) or physical mouse wheel → zoom to cursor
+      const factor = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.001));
+      const newZoom = this._vbInitial.w / (this._vb.w * factor);
+      if (newZoom < 1 || newZoom > 8) return;
+      const svgPt = this._screenToSVG(e.clientX, e.clientY);
+      this._vb.w *= factor;
+      this._vb.h *= factor;
+      const rect = this._svgEl.getBoundingClientRect();
+      this._vb.x = svgPt.x - ((e.clientX - rect.left) / rect.width) * this._vb.w;
+      this._vb.y = svgPt.y - ((e.clientY - rect.top) / rect.height) * this._vb.h;
+      this._zoomLevel = this._vbInitial.w / this._vb.w;
+    } else {
+      // Two-finger scroll (trackpad, small pixel deltas) → pan
+      const rect = this._svgEl.getBoundingClientRect();
+      this._vb.x += (e.deltaX / rect.width) * this._vb.w;
+      this._vb.y += (e.deltaY / rect.height) * this._vb.h;
+    }
+
     this._applyViewBox();
   }
 
