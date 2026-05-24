@@ -396,7 +396,9 @@ class ZigporterNetworkMapCard extends LitElement {
               ${this._searchResults.map(
                 (name, i) => html`
                   <div
-                    class="search-dropdown-item ${i === this._searchActiveIndex ? "active" : ""}"
+                    class="search-dropdown-item ${i === this._searchActiveIndex
+                      ? "active"
+                      : ""}"
                     @mousedown=${() => this._selectSearchResult(name)}
                   >
                     ${name}
