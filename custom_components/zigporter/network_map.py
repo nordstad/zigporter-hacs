@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from .const import COORDINATOR_BONUS
+
 HOP_LQI_PENALTY = 10
 
 
@@ -26,7 +28,10 @@ def build_zha_topology_from_devices(
     """Build routing topology from ZHA neighbor tables."""
     nodes: dict[str, dict[str, Any]] = {}
     links: list[dict[str, Any]] = []
+    device_lqi: dict[str, int] = {}
+    coordinator_ieee: str | None = None
 
+    # First pass: build nodes and device-level LQI map
     for dev in zha_devices:
         raw_ieee = dev.get("ieee", "")
         if not raw_ieee:
@@ -34,14 +39,28 @@ def build_zha_topology_from_devices(
         ieee = normalize_ieee(raw_ieee)
         name = dev.get("user_given_name") or dev.get("name") or raw_ieee
         device_type = dev.get("device_type") or "EndDevice"
-        nodes[ieee] = {"ieeeAddr": ieee, "friendlyName": name, "type": device_type}
+        node_data: dict[str, Any] = {"ieeeAddr": ieee, "friendlyName": name, "type": device_type}
+        if dev.get("last_seen"):
+            node_data["last_seen"] = dev["last_seen"]
+        nodes[ieee] = node_data
+        device_lqi[ieee] = _zha_lqi(dev.get("lqi"))
+        if device_type == "Coordinator":
+            coordinator_ieee = ieee
 
+    # Second pass: build links from neighbor tables
+    for dev in zha_devices:
+        raw_ieee = dev.get("ieee", "")
+        if not raw_ieee:
+            continue
+        ieee = normalize_ieee(raw_ieee)
         for neighbor in dev.get("neighbors", []):
             n_raw_ieee = neighbor.get("ieee", "")
             if not n_raw_ieee:
                 continue
             n_ieee = normalize_ieee(n_raw_ieee)
             lqi = _zha_lqi(neighbor.get("lqi"))
+            if lqi == 0:
+                lqi = device_lqi.get(n_ieee, 0)
             relationship = neighbor.get("relationship", "")
             links.append(
                 {
@@ -51,6 +70,28 @@ def build_zha_topology_from_devices(
                     "relationship": relationship,
                 }
             )
+
+    # Inject synthetic links for orphaned devices using device-level LQI.
+    # End devices often don't appear in any router's neighbor table (sleepy),
+    # but ZHA tracks their last-heard LQI on the device object.
+    if coordinator_ieee:
+        linked: set[str] = set()
+        for link in links:
+            linked.add(link["source"]["ieeeAddr"].lower())
+            linked.add(link["target"]["ieeeAddr"].lower())
+        for ieee, node in nodes.items():
+            if ieee == coordinator_ieee or ieee in linked:
+                continue
+            lqi = device_lqi.get(ieee, 0)
+            if lqi > 0:
+                links.append(
+                    {
+                        "source": {"ieeeAddr": ieee},
+                        "target": {"ieeeAddr": coordinator_ieee},
+                        "lqi": lqi,
+                        "relationship": "Child",
+                    }
+                )
 
     return nodes, links
 
@@ -156,7 +197,8 @@ def build_routing_tree(
                 effective_lqi = min(lqi_out, lqi_in)
                 is_child = 1 if relationship in ("Child", 1) else 0
                 candidate_depth = depth_map[tgt]
-                score = (is_child, effective_lqi - HOP_LQI_PENALTY * candidate_depth)
+                coord_bonus = COORDINATOR_BONUS if tgt == coordinator_ieee else 0
+                score = (is_child, effective_lqi - HOP_LQI_PENALTY * candidate_depth + coord_bonus)
                 if _is_ancestor(ieee, tgt, parent_map):
                     continue
                 if score > best_score:

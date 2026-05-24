@@ -9,9 +9,12 @@ from __future__ import annotations
 import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .const import DEFAULT_HOP_COLORS
+
+LAST_SEEN_THRESHOLD = timedelta(hours=2)
 
 # ── Visual constants ──────────────────────────────────────────────────────────
 
@@ -36,6 +39,7 @@ TEXT_DIM = "#64748b"
 EDGE_GOOD = "#22c55e"
 EDGE_WARN = "#f59e0b"
 EDGE_CRIT = "#ef4444"
+EDGE_UNKNOWN = "#64748b"
 EDGE_OPACITY = 0.55
 
 LABEL_FS = "12px"
@@ -51,7 +55,28 @@ LABEL_ARC = MAX_LABEL_LEN * 6 + 10
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+def _relative_time(last_seen: str | None) -> str | None:
+    """Return short relative time (e.g. '2m', '1h') if last_seen is within threshold."""
+    if not last_seen:
+        return None
+    try:
+        ts = datetime.fromisoformat(last_seen)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        delta = datetime.now(UTC) - ts
+        if delta > LAST_SEEN_THRESHOLD:
+            return None
+        minutes = int(delta.total_seconds() / 60)
+        if minutes < 60:
+            return f"{minutes}m"
+        return f"{minutes // 60}h"
+    except (ValueError, TypeError):
+        return None
+
+
 def _edge_color(lqi: int, warn: int, crit: int) -> str:
+    if lqi == 0:
+        return EDGE_UNKNOWN
     if lqi < crit:
         return EDGE_CRIT
     if lqi < warn:
@@ -351,7 +376,7 @@ def _draw_node(
     stroke_w = 0
     glow_filter: str | None = None
     if not is_coord:
-        if lqi < critical_lqi:
+        if lqi == 0 or lqi < critical_lqi:
             stroke_color = EDGE_CRIT
             stroke_w = 3
             glow_filter = "url(#glow-crit)"
@@ -360,6 +385,7 @@ def _draw_node(
             stroke_w = 2
             glow_filter = "url(#glow-warn)"
 
+    is_alert = not is_coord and (lqi == 0 or lqi < critical_lqi)
     circle_attrs: dict[str, str] = {
         "cx": str(round(x, 1)),
         "cy": str(round(y, 1)),
@@ -370,43 +396,50 @@ def _draw_node(
     }
     if glow_filter:
         circle_attrs["filter"] = glow_filter
+    if is_alert:
+        circle_attrs["class"] = "alert"
     ET.SubElement(node_group, "circle", circle_attrs)
 
     # LQI badge inside non-coordinator nodes
     if not is_coord:
         badge_lqi = coord_lqi if (depth == 1 and coord_lqi is not None) else path_lqi
         lqi_color = _edge_color(badge_lqi, warn_lqi, critical_lqi)
+        if badge_lqi == 0:
+            rel_time = _relative_time(node.get("last_seen"))
+            badge_text = rel_time if rel_time else "?"
+            if rel_time:
+                lqi_color = EDGE_GOOD
+        else:
+            badge_text = str(badge_lqi)
         is_router = node_type == "Router"
         badge_fs = "9px" if is_router else "8px"
         char_w = 6 if is_router else 5
         badge_h = 11 if is_router else 10
-        badge_w = len(str(badge_lqi)) * char_w + 8
-        ET.SubElement(
-            node_group,
-            "rect",
-            {
-                "x": str(round(x - badge_w / 2, 1)),
-                "y": str(round(y - badge_h / 2, 1)),
-                "width": str(badge_w),
-                "height": str(badge_h),
-                "rx": "3",
-                "fill": "#0f172a",
-                "opacity": "0.82",
-            },
-        )
-        txt = ET.SubElement(
-            node_group,
-            "text",
-            {
-                "x": str(round(x, 1)),
-                "y": str(round(y + badge_h * 0.3, 1)),
-                "fill": lqi_color,
-                "font-size": badge_fs,
-                "font-weight": "bold",
-                "text-anchor": "middle",
-            },
-        )
-        txt.text = str(badge_lqi)
+        badge_w = len(badge_text) * char_w + 8
+        badge_rect_attrs = {
+            "x": str(round(x - badge_w / 2, 1)),
+            "y": str(round(y - badge_h / 2, 1)),
+            "width": str(badge_w),
+            "height": str(badge_h),
+            "rx": "3",
+            "fill": "#0f172a",
+            "opacity": "0.82",
+        }
+        if is_alert:
+            badge_rect_attrs["class"] = "alert"
+        ET.SubElement(node_group, "rect", badge_rect_attrs)
+        badge_text_attrs = {
+            "x": str(round(x, 1)),
+            "y": str(round(y + badge_h * 0.3, 1)),
+            "fill": lqi_color,
+            "font-size": badge_fs,
+            "font-weight": "bold",
+            "text-anchor": "middle",
+        }
+        if is_alert:
+            badge_text_attrs["class"] = "alert"
+        txt = ET.SubElement(node_group, "text", badge_text_attrs)
+        txt.text = badge_text
 
     # Label: radially offset outward from center
     if is_coord:
@@ -429,35 +462,33 @@ def _draw_node(
     else:
         pill_x = lx - pill_w / 2
     pill_y = ly_label - 13
-    ET.SubElement(
-        label_group,
-        "rect",
-        {
-            "x": str(round(pill_x, 1)),
-            "y": str(round(pill_y, 1)),
-            "width": str(pill_w),
-            "height": str(pill_h),
-            "rx": "5",
-            "fill": "black",
-            "opacity": "0.6",
-        },
-    )
+    pill_rect_attrs = {
+        "x": str(round(pill_x, 1)),
+        "y": str(round(pill_y, 1)),
+        "width": str(pill_w),
+        "height": str(pill_h),
+        "rx": "5",
+        "fill": "black",
+        "opacity": "0.6",
+    }
+    if is_alert:
+        pill_rect_attrs["class"] = "alert"
+    ET.SubElement(label_group, "rect", pill_rect_attrs)
 
-    lbl = ET.SubElement(
-        label_group,
-        "text",
-        {
-            "x": str(round(lx, 1)),
-            "y": str(round(ly_label, 1)),
-            "fill": TEXT_PRIMARY,
-            "font-size": LABEL_FS,
-            "text-anchor": anchor,
-            "stroke": "black",
-            "stroke-width": "3",
-            "stroke-opacity": "0.5",
-            "paint-order": "stroke",
-        },
-    )
+    lbl_attrs = {
+        "x": str(round(lx, 1)),
+        "y": str(round(ly_label, 1)),
+        "fill": TEXT_PRIMARY,
+        "font-size": LABEL_FS,
+        "text-anchor": anchor,
+        "stroke": "black",
+        "stroke-width": "3",
+        "stroke-opacity": "0.5",
+        "paint-order": "stroke",
+    }
+    if is_alert:
+        lbl_attrs["class"] = "alert"
+    lbl = ET.SubElement(label_group, "text", lbl_attrs)
     lbl.text = display_name
     if display_name != name:
         title_el = ET.SubElement(lbl, "title")
@@ -562,6 +593,7 @@ def render_svg(
     critical_lqi: int = 20,
     hop_colors: list[str] | None = None,
     hop_opacity: float = 0.80,
+    links: list[dict[str, Any]] | None = None,
 ) -> str:
     """Render a radial Zigbee network map as an SVG XML string."""
     if not nodes:
@@ -620,9 +652,23 @@ def render_svg(
         },
     )
 
-    # Defs: filters
+    # Defs: filters + alerts-mode style
     defs = ET.SubElement(svg, "defs")
     _add_defs_filters(defs)
+    style = ET.SubElement(defs, "style")
+    style.text = (
+        "svg.alerts-mode #ring-fills,"
+        "svg.alerts-mode #rings,"
+        "svg.alerts-mode .mesh-links{opacity:0.08}"
+        "svg.alerts-mode #edges line:not(.alert){opacity:0.08}"
+        "svg.alerts-mode #lqi-labels rect:not(.alert),"
+        "svg.alerts-mode #lqi-labels text:not(.alert){opacity:0.08}"
+        "svg.alerts-mode #nodes circle:not(.alert),"
+        "svg.alerts-mode #nodes rect:not(.alert),"
+        "svg.alerts-mode #nodes text:not(.alert){opacity:0.08}"
+        "svg.alerts-mode #labels rect:not(.alert),"
+        "svg.alerts-mode #labels text:not(.alert){opacity:0.08}"
+    )
 
     # Ring band fills (donut paths, color-coded by hop)
     ring_fill_group = ET.SubElement(svg, "g", {"id": "ring-fills"})
@@ -680,6 +726,57 @@ def render_svg(
         )
         txt.text = f"Hop {h}"
 
+    # Mesh overlay links (hidden by default, toggled by frontend)
+    if links:
+        tree_edges: set[tuple[str, str]] = set()
+        for ieee, parent_ieee in parent_map.items():
+            if parent_ieee is not None:
+                tree_edges.add(tuple(sorted((ieee, parent_ieee))))
+
+        mesh_group = ET.SubElement(svg, "g", {"class": "mesh-links", "style": "display:none"})
+        drawn_mesh: set[tuple[str, str]] = set()
+        for link in links:
+            src = link["source"]["ieeeAddr"].lower()
+            tgt = link["target"]["ieeeAddr"].lower()
+            pair = tuple(sorted((src, tgt)))
+            if pair in tree_edges or pair in drawn_mesh:
+                continue
+            if src not in positions or tgt not in positions:
+                continue
+            drawn_mesh.add(pair)
+            lqi_val = link.get("lqi", 0)
+            x1, y1 = positions[src]
+            x2, y2 = positions[tgt]
+            ET.SubElement(
+                mesh_group,
+                "line",
+                {
+                    "x1": str(round(x1, 1)),
+                    "y1": str(round(y1, 1)),
+                    "x2": str(round(x2, 1)),
+                    "y2": str(round(y2, 1)),
+                    "stroke": "#94a3b8",
+                    "stroke-width": "0.5",
+                    "stroke-dasharray": "4,3",
+                    "stroke-opacity": "0.5",
+                },
+            )
+            mx = (x1 + x2) / 2
+            my = (y1 + y2) / 2
+            lqi_txt = ET.SubElement(
+                mesh_group,
+                "text",
+                {
+                    "x": str(round(mx, 1)),
+                    "y": str(round(my, 1)),
+                    "fill": "#94a3b8",
+                    "font-size": "9px",
+                    "text-anchor": "middle",
+                    "opacity": "0.7",
+                },
+            )
+            lqi_txt.text = str(lqi_val)
+
     # Edges + LQI pill badges
     edge_group = ET.SubElement(svg, "g", {"id": "edges", "opacity": str(EDGE_OPACITY)})
     lqi_label_group = ET.SubElement(svg, "g", {"id": "lqi-labels"})
@@ -692,48 +789,54 @@ def render_svg(
         x2, y2 = positions[parent_ieee]
         lqi = lqi_map.get(ieee, 0)
         color = _edge_color(lqi, warn_lqi, critical_lqi)
-        ET.SubElement(
-            edge_group,
-            "line",
-            {
-                "x1": str(round(x1, 1)),
-                "y1": str(round(y1, 1)),
-                "x2": str(round(x2, 1)),
-                "y2": str(round(y2, 1)),
-                "stroke": color,
-                "stroke-width": str(_edge_width(lqi)),
-            },
-        )
+        is_alert = lqi == 0 or lqi < critical_lqi
+        rel_time = _relative_time(nodes[ieee].get("last_seen")) if lqi == 0 else None
+        if rel_time:
+            color = EDGE_GOOD
+        line_attrs = {
+            "x1": str(round(x1, 1)),
+            "y1": str(round(y1, 1)),
+            "x2": str(round(x2, 1)),
+            "y2": str(round(y2, 1)),
+            "stroke": color,
+            "stroke-width": str(_edge_width(lqi)),
+        }
+        if lqi == 0 and not rel_time:
+            line_attrs["stroke-dasharray"] = "6,4"
+        if is_alert:
+            line_attrs["class"] = "alert"
+        ET.SubElement(edge_group, "line", line_attrs)
         # LQI label on edge
-        lqi_text = f"LQI: {lqi}"
+        if lqi == 0:
+            lqi_text = f"Seen: {rel_time}" if rel_time else "LQI: ?"
+        else:
+            lqi_text = f"LQI: {lqi}"
         mx = x1 + 0.35 * (x2 - x1)
         my = y1 + 0.35 * (y2 - y1)
         badge_w = len(lqi_text) * 7 + 10
-        ET.SubElement(
-            lqi_label_group,
-            "rect",
-            {
-                "x": str(round(mx - badge_w / 2, 1)),
-                "y": str(round(my - 9, 1)),
-                "width": str(badge_w),
-                "height": "13",
-                "rx": "4",
-                "fill": "#0f172a",
-                "opacity": "0.85",
-            },
-        )
-        txt = ET.SubElement(
-            lqi_label_group,
-            "text",
-            {
-                "x": str(round(mx, 1)),
-                "y": str(round(my + 1, 1)),
-                "fill": color,
-                "font-size": DIM_FS,
-                "text-anchor": "middle",
-                "opacity": "0.95",
-            },
-        )
+        lqi_rect_attrs = {
+            "x": str(round(mx - badge_w / 2, 1)),
+            "y": str(round(my - 9, 1)),
+            "width": str(badge_w),
+            "height": "13",
+            "rx": "4",
+            "fill": "#0f172a",
+            "opacity": "0.85",
+        }
+        if is_alert:
+            lqi_rect_attrs["class"] = "alert"
+        ET.SubElement(lqi_label_group, "rect", lqi_rect_attrs)
+        lqi_text_attrs = {
+            "x": str(round(mx, 1)),
+            "y": str(round(my + 1, 1)),
+            "fill": color,
+            "font-size": DIM_FS,
+            "text-anchor": "middle",
+            "opacity": "0.95",
+        }
+        if is_alert:
+            lqi_text_attrs["class"] = "alert"
+        txt = ET.SubElement(lqi_label_group, "text", lqi_text_attrs)
         txt.text = lqi_text
 
     # Nodes + labels

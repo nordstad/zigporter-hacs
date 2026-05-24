@@ -214,6 +214,79 @@ class TestSvgEdgeCases:
         )
         assert "#ef4444" in svg
 
+    def test_critical_nodes_have_alert_class(self):
+        """Critical LQI (1-19) nodes and edges get class='alert' for the Alerts toggle."""
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
+            "0xdev": {"ieeeAddr": "0xdev", "friendlyName": "Device", "type": "EndDevice"},
+        }
+        links = [
+            {"source": {"ieeeAddr": "0xdev"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 5},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xdev"}, "lqi": 5},
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        svg = render_svg(
+            nodes=nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            critical_lqi=20,
+        )
+        assert 'class="alert"' in svg
+        assert "alerts-mode" in svg
+
+    def test_lqi_zero_gets_alert_class(self):
+        """LQI=0 (no measurement) should get the alert class so alerts-mode highlights it."""
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
+            "0xdev": {"ieeeAddr": "0xdev", "friendlyName": "Device", "type": "EndDevice"},
+        }
+        links = [
+            {"source": {"ieeeAddr": "0xdev"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 0},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xdev"}, "lqi": 0},
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        svg = render_svg(
+            nodes=nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            critical_lqi=20,
+        )
+        assert 'class="alert"' in svg
+
+    def test_lqi_zero_renders_as_unknown(self):
+        """LQI=0 means no measurement — gray dashed edge, '?' badge, red glow."""
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
+            "0xdev": {"ieeeAddr": "0xdev", "friendlyName": "Device", "type": "EndDevice"},
+        }
+        links = [
+            {"source": {"ieeeAddr": "0xdev"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 0},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xdev"}, "lqi": 0},
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        svg = render_svg(
+            nodes=nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            critical_lqi=20,
+        )
+        root = ET.fromstring(svg)
+        ns = "{http://www.w3.org/2000/svg}"
+        # Gray/unknown edge color
+        assert "#64748b" in svg
+        # Dashed edge
+        assert "stroke-dasharray" in svg
+        # Badge shows "?" not "0"
+        assert ">?<" in svg
+        assert "LQI: ?" in svg
+        # Non-coordinator node gets red glow (unknown = treated as critical)
+        circles = root.findall(f".//{ns}g[@id='nodes']//{ns}circle")
+        non_coord = [c for c in circles if "glow-crit" in (c.get("filter") or "")]
+        assert len(non_coord) == 1
+
     def test_angular_overflow_clamping_and_collision(self):
         nodes = {
             "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
@@ -343,3 +416,58 @@ class TestCustomHopColors:
         assert "#00AA00" in svg
         assert "#0000AA" in svg
         assert "#AAAA00" in svg
+
+
+class TestMeshLinks:
+    def test_mesh_links_rendered_when_links_provided(self, sample_z2m_nodes, sample_z2m_links):
+        parent_map, lqi_map, depth_map = build_routing_tree(sample_z2m_nodes, sample_z2m_links)
+        svg = render_svg(
+            nodes=sample_z2m_nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            links=sample_z2m_links,
+        )
+        assert 'class="mesh-links"' in svg
+        assert "display:none" in svg
+
+    def test_mesh_links_not_rendered_without_links(self, sample_z2m_nodes, sample_z2m_links):
+        parent_map, lqi_map, depth_map = build_routing_tree(sample_z2m_nodes, sample_z2m_links)
+        svg = render_svg(
+            nodes=sample_z2m_nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+        )
+        assert 'class="mesh-links"' not in svg
+
+    def test_mesh_links_exclude_tree_edges(self):
+        """Mesh overlay should not duplicate edges already in the tree."""
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
+            "0xa": {"ieeeAddr": "0xa", "friendlyName": "A", "type": "Router"},
+            "0xb": {"ieeeAddr": "0xb", "friendlyName": "B", "type": "Router"},
+        }
+        links = [
+            {"source": {"ieeeAddr": "0xa"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 200},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xa"}, "lqi": 200},
+            {"source": {"ieeeAddr": "0xb"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 180},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xb"}, "lqi": 180},
+            # Mesh-only link between a and b (not in tree)
+            {"source": {"ieeeAddr": "0xa"}, "target": {"ieeeAddr": "0xb"}, "lqi": 120},
+            {"source": {"ieeeAddr": "0xb"}, "target": {"ieeeAddr": "0xa"}, "lqi": 110},
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        svg = render_svg(
+            nodes=nodes,
+            parent_map=parent_map,
+            lqi_map=lqi_map,
+            depth_map=depth_map,
+            links=links,
+        )
+        root = ET.fromstring(svg)
+        mesh_g = root.find(".//{http://www.w3.org/2000/svg}g[@class='mesh-links']")
+        assert mesh_g is not None
+        mesh_lines = mesh_g.findall("{http://www.w3.org/2000/svg}line")
+        assert len(mesh_lines) == 1
+        assert mesh_g.find("{http://www.w3.org/2000/svg}text").text == "120"

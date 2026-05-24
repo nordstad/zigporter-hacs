@@ -42,6 +42,18 @@ Typical scan times by network size:
 | 50–100 | 1–3 min |
 | 100+ | 3–9 min |
 
+### Battery devices show "?" or relative time on ZHA
+
+**Cause:** ZHA reads raw Zigbee neighbor tables at scan time. Battery devices are asleep during this read and cannot report their LQI. This is a ZHA platform limitation — Z2M does not have this issue because it accumulates signal data from ongoing communication.
+
+**What you'll see:**
+
+- Badge shows relative time (e.g. "2m") if the device communicated within the last 2 hours — this confirms the device is alive
+- Badge shows "?" if there's no recent communication — genuinely unknown status
+- Edge is solid green (recently seen) or gray dashed (unknown)
+
+**Fix:** If you need accurate signal data for all devices, switch to the Zigbee2MQTT backend.
+
 ### Map shows flat topology (no hops)
 
 **Cause:** ZHA backend often lacks full routing table data.

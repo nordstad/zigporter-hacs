@@ -126,6 +126,107 @@ class TestBuildZhaTopologyFromDevices:
         assert len(nodes) == 1
         assert len(links) == 0
 
+    def test_neighbor_lqi_zero_falls_back_to_device_lqi(self):
+        """Router reports neighbor with LQI=0 (sleepy), fallback to device-level LQI."""
+        devices = [
+            {
+                "ieee": "00:11:22:33:44:55:66:00",
+                "name": "Coordinator",
+                "device_type": "Coordinator",
+                "lqi": 255,
+                "neighbors": [
+                    {"ieee": "00:11:22:33:44:55:66:01", "lqi": "152", "relationship": "Child"},
+                ],
+            },
+            {
+                "ieee": "00:11:22:33:44:55:66:01",
+                "name": "Range Extender",
+                "device_type": "Router",
+                "lqi": 152,
+                "neighbors": [
+                    {"ieee": "00:11:22:33:44:55:66:00", "lqi": "152", "relationship": "Parent"},
+                    {"ieee": "00:11:22:33:44:55:66:02", "lqi": "0", "relationship": "Child"},
+                ],
+            },
+            {
+                "ieee": "00:11:22:33:44:55:66:02",
+                "name": "Krypgrund Temp Sensor",
+                "device_type": "EndDevice",
+                "lqi": 95,
+            },
+        ]
+        nodes, links = build_zha_topology_from_devices(devices)
+        sensor_ieee = normalize_ieee("00:11:22:33:44:55:66:02")
+        sensor_links = [lk for lk in links if lk["source"]["ieeeAddr"] == sensor_ieee]
+        assert sensor_links[0]["lqi"] == 95
+
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        assert lqi_map[sensor_ieee] == 95
+        assert depth_map[sensor_ieee] == 2
+
+    def test_orphan_device_gets_synthetic_link_from_device_lqi(self):
+        """End device not in any neighbor table uses device-level LQI as fallback."""
+        devices = [
+            {
+                "ieee": "00:11:22:33:44:55:66:00",
+                "name": "Coordinator",
+                "device_type": "Coordinator",
+                "lqi": 255,
+                "neighbors": [
+                    {"ieee": "00:11:22:33:44:55:66:01", "lqi": "150", "relationship": "Child"},
+                ],
+            },
+            {
+                "ieee": "00:11:22:33:44:55:66:01",
+                "name": "Router",
+                "device_type": "Router",
+                "lqi": 150,
+                "neighbors": [
+                    {"ieee": "00:11:22:33:44:55:66:00", "lqi": "150", "relationship": "Parent"},
+                ],
+            },
+            {
+                "ieee": "00:11:22:33:44:55:66:02",
+                "name": "Orphan Sensor",
+                "device_type": "EndDevice",
+                "lqi": 120,
+            },
+        ]
+        nodes, links = build_zha_topology_from_devices(devices)
+        coord_ieee = normalize_ieee("00:11:22:33:44:55:66:00")
+        orphan_ieee = normalize_ieee("00:11:22:33:44:55:66:02")
+        synthetic = [
+            lk for lk in links if lk["source"]["ieeeAddr"] == orphan_ieee and lk["lqi"] == 120
+        ]
+        assert len(synthetic) == 1
+        assert synthetic[0]["target"]["ieeeAddr"] == coord_ieee
+
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        assert lqi_map[orphan_ieee] == 120
+        assert depth_map[orphan_ieee] == 1
+
+    def test_orphan_device_with_zero_lqi_stays_unknown(self):
+        """Orphan with device-level LQI=0 still renders as unknown (no synthetic link)."""
+        devices = [
+            {
+                "ieee": "00:11:22:33:44:55:66:00",
+                "name": "Coordinator",
+                "device_type": "Coordinator",
+                "lqi": 255,
+                "neighbors": [],
+            },
+            {
+                "ieee": "00:11:22:33:44:55:66:02",
+                "name": "Dead Sensor",
+                "device_type": "EndDevice",
+                "lqi": 0,
+            },
+        ]
+        nodes, links = build_zha_topology_from_devices(devices)
+        orphan_ieee = normalize_ieee("00:11:22:33:44:55:66:02")
+        synthetic = [lk for lk in links if lk["source"]["ieeeAddr"] == orphan_ieee]
+        assert len(synthetic) == 0
+
 
 class TestBuildFlatZhaTopology:
     def test_all_at_depth_one(self, sample_zha_devices_no_neighbors):
@@ -193,3 +294,25 @@ class TestBuildRoutingTreeEdgeCases:
         assert depth_map["0xa"] == 1
         assert depth_map["0xb"] == 2
         assert depth_map["0xc"] == 3
+
+    def test_coordinator_bonus_prefers_coordinator(self):
+        """Device with similar LQI to coord and router should prefer coordinator."""
+        nodes = {
+            "0xcoord": {"ieeeAddr": "0xcoord", "type": "Coordinator"},
+            "0xrouter": {"ieeeAddr": "0xrouter", "type": "Router"},
+            "0xdevice": {"ieeeAddr": "0xdevice", "type": "EndDevice"},
+        }
+        # Device sees coordinator at LQI 140 and router at LQI 150
+        # Without bonus: coord score = 140, router score = 150-10 = 140 (tie)
+        # With bonus (15): coord score = 140+15 = 155 > router score = 140
+        links = [
+            {"source": {"ieeeAddr": "0xrouter"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 200},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xrouter"}, "lqi": 200},
+            {"source": {"ieeeAddr": "0xdevice"}, "target": {"ieeeAddr": "0xcoord"}, "lqi": 140},
+            {"source": {"ieeeAddr": "0xcoord"}, "target": {"ieeeAddr": "0xdevice"}, "lqi": 140},
+            {"source": {"ieeeAddr": "0xdevice"}, "target": {"ieeeAddr": "0xrouter"}, "lqi": 150},
+            {"source": {"ieeeAddr": "0xrouter"}, "target": {"ieeeAddr": "0xdevice"}, "lqi": 150},
+        ]
+        parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+        assert parent_map["0xdevice"] == "0xcoord"
+        assert depth_map["0xdevice"] == 1

@@ -3,6 +3,8 @@ import "../../custom_components/zigporter/static/zigporter-network-map-card.js";
 
 const VALID_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40"/></svg>';
+const SVG_WITH_MESH =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><g class="mesh-links" style="display:none"><line x1="0" y1="0" x2="100" y2="100" stroke="#94a3b8"/></g><circle cx="50" cy="50" r="40"/></svg>';
 const SVG_NO_VIEWBOX =
   '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150"><rect width="200" height="150"/></svg>';
 const INVALID_SVG = "<not-valid-xml<>";
@@ -1339,6 +1341,241 @@ describe("ZigporterNetworkMapCard", () => {
 
       const stats = el.renderRoot.querySelector(".stats");
       expect(stats.textContent).to.not.include("Scanned");
+    });
+  });
+
+  describe("Tree/Mesh toggle", () => {
+    it("renders Tree, Mesh, and Alerts toggle buttons", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+      const toggles = el.renderRoot.querySelectorAll(".toggle-btn");
+      expect(toggles.length).to.equal(3);
+      expect(toggles[0].textContent.trim()).to.equal("Tree");
+      expect(toggles[1].textContent.trim()).to.equal("Mesh");
+      expect(toggles[2].textContent.trim()).to.equal("Alerts");
+    });
+
+    it("Tree button is active by default, Alerts is not", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+      const toggles = el.renderRoot.querySelectorAll(".toggle-btn");
+      expect(toggles[0].classList.contains("active")).to.be.true;
+      expect(toggles[1].classList.contains("active")).to.be.false;
+      expect(toggles[2].classList.contains("active")).to.be.false;
+    });
+
+    it("clicking Mesh shows mesh-links group", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+
+      el.hass = mockHass((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({
+          svg: SVG_WITH_MESH,
+          device_count: 5,
+          max_depth: 3,
+          scan_duration_ms: 1500,
+          backend: "z2m",
+        });
+      });
+      await aTimeout(50);
+      await el.updateComplete;
+
+      const meshBtn = el.renderRoot.querySelectorAll(".toggle-btn")[1];
+      meshBtn.click();
+      await el.updateComplete;
+
+      const meshGroup = el.renderRoot.querySelector(
+        ".map-container svg .mesh-links",
+      );
+      expect(meshGroup.style.display).to.equal("block");
+    });
+
+    it("clicking Tree hides mesh-links group", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+
+      el.hass = mockHass((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({
+          svg: SVG_WITH_MESH,
+          device_count: 5,
+          max_depth: 3,
+          scan_duration_ms: 1500,
+          backend: "z2m",
+        });
+      });
+      await aTimeout(50);
+      await el.updateComplete;
+
+      // Enable mesh first
+      el._setMeshVisible(true);
+      await el.updateComplete;
+
+      // Then switch back to tree
+      const treeBtn = el.renderRoot.querySelectorAll(".toggle-btn")[0];
+      treeBtn.click();
+      await el.updateComplete;
+
+      const meshGroup = el.renderRoot.querySelector(
+        ".map-container svg .mesh-links",
+      );
+      expect(meshGroup.style.display).to.equal("none");
+    });
+
+    it("_setMeshVisible is no-op without SVG", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+
+      // No SVG loaded, should not throw
+      el._setMeshVisible(true);
+      expect(el._meshVisible).to.be.true;
+    });
+
+    it("preserves mesh visibility when SVG re-renders", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+
+      el._meshVisible = true;
+      el._hass = mockHass((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({
+          svg: SVG_WITH_MESH,
+          device_count: 5,
+          max_depth: 3,
+          scan_duration_ms: 1500,
+          backend: "z2m",
+        });
+      });
+      el._initialized = true;
+      await el._fetchMap(true);
+      await el.updateComplete;
+
+      const meshGroup = el.renderRoot.querySelector(
+        ".map-container svg .mesh-links",
+      );
+      expect(meshGroup.style.display).to.equal("block");
+    });
+
+    it("clicking Alerts adds alerts-mode class to SVG", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+
+      el.hass = mockHass((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({
+          svg: VALID_SVG,
+          device_count: 5,
+          max_depth: 3,
+          scan_duration_ms: 1500,
+          backend: "z2m",
+        });
+      });
+      await aTimeout(50);
+      await el.updateComplete;
+
+      const alertsBtn = el.renderRoot.querySelectorAll(".toggle-btn")[2];
+      alertsBtn.click();
+      await el.updateComplete;
+
+      const svgEl = el.renderRoot.querySelector(".map-container svg");
+      expect(svgEl.classList.contains("alerts-mode")).to.be.true;
+      expect(alertsBtn.classList.contains("active")).to.be.true;
+    });
+
+    it("clicking Alerts again removes alerts-mode class", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+
+      el.hass = mockHass((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({
+          svg: VALID_SVG,
+          device_count: 5,
+          max_depth: 3,
+          scan_duration_ms: 1500,
+          backend: "z2m",
+        });
+      });
+      await aTimeout(50);
+      await el.updateComplete;
+
+      el._setAlertsVisible(true);
+      await el.updateComplete;
+
+      const alertsBtn = el.renderRoot.querySelectorAll(".toggle-btn")[2];
+      alertsBtn.click();
+      await el.updateComplete;
+
+      const svgEl = el.renderRoot.querySelector(".map-container svg");
+      expect(svgEl.classList.contains("alerts-mode")).to.be.false;
+    });
+
+    it("_setAlertsVisible is no-op without SVG", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+
+      el._setAlertsVisible(true);
+      expect(el._alertsVisible).to.be.true;
+    });
+
+    it("preserves alerts visibility when SVG re-renders", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+
+      el._alertsVisible = true;
+      el._hass = mockHass((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({
+          svg: VALID_SVG,
+          device_count: 5,
+          max_depth: 3,
+          scan_duration_ms: 1500,
+          backend: "z2m",
+        });
+      });
+      el._initialized = true;
+      await el._fetchMap(true);
+      await el.updateComplete;
+
+      const svgEl = el.renderRoot.querySelector(".map-container svg");
+      expect(svgEl.classList.contains("alerts-mode")).to.be.true;
     });
   });
 });
