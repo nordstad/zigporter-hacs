@@ -235,8 +235,8 @@ class TestSvgEdgeCases:
         assert 'class="alert"' in svg
         assert "alerts-mode" in svg
 
-    def test_lqi_zero_no_alert_class(self):
-        """LQI=0 (no measurement) should NOT get the alert class."""
+    def test_lqi_zero_gets_alert_class(self):
+        """LQI=0 (no measurement) should get the alert class so alerts-mode highlights it."""
         nodes = {
             "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
             "0xdev": {"ieeeAddr": "0xdev", "friendlyName": "Device", "type": "EndDevice"},
@@ -253,7 +253,7 @@ class TestSvgEdgeCases:
             depth_map=depth_map,
             critical_lqi=20,
         )
-        assert 'class="alert"' not in svg
+        assert 'class="alert"' in svg
 
     def test_lqi_zero_renders_as_unknown(self):
         """LQI=0 means no measurement — gray dashed edge, '?' badge, no glow."""

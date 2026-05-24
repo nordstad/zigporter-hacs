@@ -385,7 +385,7 @@ def _draw_node(
             stroke_w = 2
             glow_filter = "url(#glow-warn)"
 
-    is_alert = not is_coord and 0 < lqi < critical_lqi
+    is_alert = not is_coord and (lqi == 0 or lqi < critical_lqi)
     circle_attrs: dict[str, str] = {
         "cx": str(round(x, 1)),
         "cy": str(round(y, 1)),
@@ -789,7 +789,7 @@ def render_svg(
         x2, y2 = positions[parent_ieee]
         lqi = lqi_map.get(ieee, 0)
         color = _edge_color(lqi, warn_lqi, critical_lqi)
-        is_alert = 0 < lqi < critical_lqi
+        is_alert = lqi == 0 or lqi < critical_lqi
         rel_time = _relative_time(nodes[ieee].get("last_seen")) if lqi == 0 else None
         if rel_time:
             color = EDGE_GOOD
