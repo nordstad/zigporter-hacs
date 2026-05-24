@@ -198,6 +198,7 @@ async def _run_scan(hass: HomeAssistant, entry: Any, backend: str) -> dict[str, 
         critical_lqi=critical_lqi,
         hop_colors=hop_colors,
         hop_opacity=hop_opacity,
+        links=links,
     )
 
     scan_duration_ms = int((time.monotonic() - start) * 1000)

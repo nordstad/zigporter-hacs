@@ -15,6 +15,8 @@ class ZigporterNetworkMapCard extends LitElement {
     _stats: { state: true },
     _elapsed: { state: true },
     _buttonsDisabled: { state: true },
+    _meshVisible: { state: true },
+    _alertsVisible: { state: true },
   };
 
   static styles = css`
@@ -146,6 +148,21 @@ class ZigporterNetworkMapCard extends LitElement {
     a.action-btn {
       text-decoration: none;
     }
+    .toggle-btn {
+      background: none;
+      border: 1px solid var(--divider-color, #444);
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--secondary-text-color);
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .toggle-btn.active {
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+      border-color: var(--primary-color);
+    }
   `;
 
   static getStubConfig() {
@@ -160,6 +177,8 @@ class ZigporterNetworkMapCard extends LitElement {
     this._stats = null;
     this._elapsed = 0;
     this._buttonsDisabled = false;
+    this._meshVisible = false;
+    this._alertsVisible = false;
     this._initialized = false;
     this._hass = null;
     this._svgEl = null;
@@ -210,6 +229,13 @@ class ZigporterNetworkMapCard extends LitElement {
         this._teardownPanZoom();
         this._svgEl = svgEl;
         this._initPanZoom(svgEl);
+        if (this._meshVisible) {
+          const meshGroup = svgEl.querySelector(".mesh-links");
+          if (meshGroup) meshGroup.style.display = "block";
+        }
+        if (this._alertsVisible) {
+          svgEl.classList.add("alerts-mode");
+        }
       }
     }
   }
@@ -240,6 +266,24 @@ class ZigporterNetworkMapCard extends LitElement {
       <div class="header">
         <h2>${this._config.title}</h2>
         <div class="btn-group">
+          <button
+            class="toggle-btn ${!this._meshVisible ? "active" : ""}"
+            @click=${() => this._setMeshVisible(false)}
+          >
+            Tree
+          </button>
+          <button
+            class="toggle-btn ${this._meshVisible ? "active" : ""}"
+            @click=${() => this._setMeshVisible(true)}
+          >
+            Mesh
+          </button>
+          <button
+            class="toggle-btn ${this._alertsVisible ? "active" : ""}"
+            @click=${() => this._setAlertsVisible(!this._alertsVisible)}
+          >
+            Alerts
+          </button>
           <a
             class="action-btn"
             href="https://nordstad.github.io/zigporter-hacs/"
@@ -306,6 +350,10 @@ class ZigporterNetworkMapCard extends LitElement {
           <span class="legend-item"
             ><span class="legend-line" style="background:#ef4444"></span
             ><span>LQI &lt; 20</span></span
+          >
+          <span class="legend-item"
+            ><span class="legend-line" style="background:#64748b; border-top: 2px dashed #64748b; height:0"></span
+            ><span>No data (sleepy)</span></span
           >
           <span class="legend-item" style="opacity:0.7"
             >Badge = path-min LQI</span
@@ -408,6 +456,7 @@ class ZigporterNetworkMapCard extends LitElement {
         if (result.scan_timestamp) {
           stats += ` · Scanned ${new Date(result.scan_timestamp).toLocaleString()}`;
         }
+        stats += " · estimated";
         this._stats = stats;
       }
     } catch (err) {
@@ -447,6 +496,23 @@ class ZigporterNetworkMapCard extends LitElement {
     svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
     return new XMLSerializer().serializeToString(svgEl);
+  }
+
+  _setMeshVisible(visible) {
+    this._meshVisible = visible;
+    const svgEl = this.renderRoot.querySelector(".map-container svg");
+    if (!svgEl) return;
+    const meshGroup = svgEl.querySelector(".mesh-links");
+    if (meshGroup) {
+      meshGroup.style.display = visible ? "block" : "none";
+    }
+  }
+
+  _setAlertsVisible(visible) {
+    this._alertsVisible = visible;
+    const svgEl = this.renderRoot.querySelector(".map-container svg");
+    if (!svgEl) return;
+    svgEl.classList.toggle("alerts-mode", visible);
   }
 
   // --- Pan/Zoom ---
