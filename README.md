@@ -2,6 +2,7 @@
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![GitHub Release](https://img.shields.io/github/v/release/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/releases)
+[![Downloads](https://img.shields.io/github/downloads/nordstad/zigporter-hacs/total)](https://github.com/nordstad/zigporter-hacs/releases)
 [![Validate](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml/badge.svg)](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml)
 [![Docs](https://img.shields.io/badge/docs-nordstad.github.io-teal)](https://nordstad.github.io/zigporter-hacs/)
 [![License: MIT](https://img.shields.io/github/license/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/blob/main/LICENSE)
