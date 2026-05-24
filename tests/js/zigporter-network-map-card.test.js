@@ -511,10 +511,12 @@ describe("ZigporterNetworkMapCard", () => {
       el.setConfig({});
       await el.updateComplete;
       const buttons = el.renderRoot.querySelectorAll(".action-btn");
-      expect(buttons.length).to.equal(3);
+      expect(buttons.length).to.equal(5);
       expect(buttons[0].textContent.trim()).to.equal("Help");
-      expect(buttons[1].textContent.trim()).to.equal("Reset");
-      expect(buttons[2].textContent.trim()).to.equal("Scan");
+      expect(buttons[1].textContent.trim()).to.equal("+");
+      expect(buttons[2].textContent.trim()).to.equal("−");
+      expect(buttons[3].textContent.trim()).to.equal("Reset");
+      expect(buttons[4].textContent.trim()).to.equal("Scan");
     });
 
     it("renders SVG content into map-container", async () => {
@@ -838,6 +840,78 @@ describe("ZigporterNetworkMapCard", () => {
       svgEl.dispatchEvent(event);
 
       expect(el._vb.w).to.equal(100);
+    });
+
+    it("_onWheel zooms on ctrlKey (pinch gesture)", async () => {
+      await createCardWithSvg();
+      const svgEl = el._svgEl;
+      const rect = svgEl.getBoundingClientRect();
+      const event = new WheelEvent("wheel", {
+        deltaY: -50,
+        ctrlKey: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        cancelable: true,
+      });
+      svgEl.dispatchEvent(event);
+      expect(el._zoomLevel).to.be.greaterThan(1);
+    });
+
+    it("_onWheel pans on trackpad scroll (small deltaY, no ctrlKey)", async () => {
+      await createCardWithSvg();
+      const svgEl = el._svgEl;
+      const initialX = el._vb.x;
+      const initialY = el._vb.y;
+      const rect = svgEl.getBoundingClientRect();
+      const event = new WheelEvent("wheel", {
+        deltaY: 10,
+        deltaX: 5,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        cancelable: true,
+      });
+      svgEl.dispatchEvent(event);
+      expect(el._vb.x).to.be.greaterThan(initialX);
+      expect(el._vb.y).to.be.greaterThan(initialY);
+    });
+
+    it("_zoomBy zooms in centered on current view", async () => {
+      await createCardWithSvg();
+      const cx = el._vb.x + el._vb.w / 2;
+      const cy = el._vb.y + el._vb.h / 2;
+      el._zoomBy(0.7);
+      expect(el._vb.w).to.be.lessThan(100);
+      expect(el._zoomLevel).to.be.greaterThan(1);
+      expect(el._vb.x + el._vb.w / 2).to.be.closeTo(cx, 0.01);
+      expect(el._vb.y + el._vb.h / 2).to.be.closeTo(cy, 0.01);
+    });
+
+    it("_zoomBy zooms out", async () => {
+      await createCardWithSvg();
+      el._vb = { x: 25, y: 25, w: 50, h: 50 };
+      el._zoomLevel = 2;
+      el._zoomBy(1 / 0.7);
+      expect(el._vb.w).to.be.greaterThan(50);
+    });
+
+    it("_zoomBy respects max zoom", async () => {
+      await createCardWithSvg();
+      el._vb = { x: 44, y: 44, w: 12, h: 12 };
+      el._zoomLevel = 8;
+      el._zoomBy(0.7);
+      expect(el._vb.w).to.equal(12);
+    });
+
+    it("_zoomBy respects min zoom", async () => {
+      await createCardWithSvg();
+      el._zoomBy(1 / 0.7);
+      expect(el._vb.w).to.equal(100);
+    });
+
+    it("_zoomBy is no-op without viewBox", async () => {
+      await createCardWithSvg();
+      el._vb = null;
+      el._zoomBy(0.7);
     });
 
     it("pointer drag pans the view", async () => {
