@@ -38,9 +38,13 @@ For ZHA battery devices with LQI=0, Zigporter uses the device's `last_seen` time
 
 ## Interactions
 
-- **Pan** — click and drag the map
-- **Zoom** — mouse wheel or pinch-to-zoom on touch devices
+- **Pan** — click and drag the map; on a trackpad, two-finger scroll pans (small delta values are treated as pan, not zoom)
+- **Zoom** — mouse wheel or pinch gesture (`Ctrl`+scroll); `+` / `−` buttons in the header for reliable zoom on any input device
 - **Reset** — click "Reset" button to return to the default view
+
+## Device search
+
+Click the **Search** button in the card header to open a search box. Type any part of a device name to filter — a dropdown of matching devices appears. Selecting a result pans and zooms the map to center on that device and highlights it with an animated ring.
 
 ## View modes
 

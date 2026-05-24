@@ -25,7 +25,8 @@ Supports both **Zigbee2MQTT** and **ZHA** backends.
 - **LQI signal quality** — color-coded links (green/yellow/red) based on link quality
 - **Mesh overlay** — toggle to see all raw neighbor links alongside the routing tree
 - **Alerts mode** — dim healthy devices, highlight only critical-signal nodes
-- **Pan & zoom** — mouse wheel, drag, and pinch-to-zoom with reset button
+- **Pan & zoom** — mouse wheel, drag, pinch-to-zoom, and `+`/`−` buttons with reset
+- **Device search** — search by name to pan and zoom directly to any device
 - **Configurable colors** — custom hop ring colors and opacity
 - **Disk-cached** — scan results persisted across restarts, manual refresh only
 - **Dual backend** — switch between Zigbee2MQTT and ZHA without reinstalling
