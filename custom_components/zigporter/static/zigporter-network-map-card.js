@@ -352,7 +352,10 @@ class ZigporterNetworkMapCard extends LitElement {
             ><span>LQI &lt; 20</span></span
           >
           <span class="legend-item"
-            ><span class="legend-line" style="background:#64748b; border-top: 2px dashed #64748b; height:0"></span
+            ><span
+              class="legend-line"
+              style="background:#64748b; border-top: 2px dashed #64748b; height:0"
+            ></span
             ><span>No data (sleepy)</span></span
           >
           <span class="legend-item" style="opacity:0.7"
