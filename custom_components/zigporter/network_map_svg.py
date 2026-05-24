@@ -371,12 +371,12 @@ def _draw_node(
     nr = _node_radius(node_type)
     is_coord = node_type == "Coordinator"
 
-    # Status ring + glow filter on problem nodes (skip when LQI=0 = no data)
+    # Status ring + glow filter on problem nodes
     stroke_color = fill
     stroke_w = 0
     glow_filter: str | None = None
-    if not is_coord and lqi > 0:
-        if lqi < critical_lqi:
+    if not is_coord:
+        if lqi == 0 or lqi < critical_lqi:
             stroke_color = EDGE_CRIT
             stroke_w = 3
             glow_filter = "url(#glow-crit)"

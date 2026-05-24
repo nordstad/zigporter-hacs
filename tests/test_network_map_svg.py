@@ -256,7 +256,7 @@ class TestSvgEdgeCases:
         assert 'class="alert"' in svg
 
     def test_lqi_zero_renders_as_unknown(self):
-        """LQI=0 means no measurement — gray dashed edge, '?' badge, no glow."""
+        """LQI=0 means no measurement — gray dashed edge, '?' badge, red glow."""
         nodes = {
             "0xcoord": {"ieeeAddr": "0xcoord", "friendlyName": "Coord", "type": "Coordinator"},
             "0xdev": {"ieeeAddr": "0xdev", "friendlyName": "Device", "type": "EndDevice"},
@@ -282,10 +282,10 @@ class TestSvgEdgeCases:
         # Badge shows "?" not "0"
         assert ">?<" in svg
         assert "LQI: ?" in svg
-        # No glow filter on node circles
+        # Non-coordinator node gets red glow (unknown = treated as critical)
         circles = root.findall(f".//{ns}g[@id='nodes']//{ns}circle")
-        for c in circles:
-            assert "glow-crit" not in (c.get("filter") or "")
+        non_coord = [c for c in circles if "glow-crit" in (c.get("filter") or "")]
+        assert len(non_coord) == 1
 
     def test_angular_overflow_clamping_and_collision(self):
         nodes = {
