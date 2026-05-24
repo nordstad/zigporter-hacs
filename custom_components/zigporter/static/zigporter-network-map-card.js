@@ -613,7 +613,8 @@ class ZigporterNetworkMapCard extends LitElement {
     e.stopPropagation();
     if (!this._vb) return;
 
-    const isMouseWheel = e.deltaMode !== 0 || (Math.abs(e.deltaY) > 50 && Math.abs(e.deltaX) < 5);
+    const isMouseWheel =
+      e.deltaMode !== 0 || (Math.abs(e.deltaY) > 50 && Math.abs(e.deltaX) < 5);
     if (e.ctrlKey || isMouseWheel) {
       // Pinch gesture (ctrlKey) or physical mouse wheel → zoom to cursor
       const factor = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.001));
@@ -623,8 +624,10 @@ class ZigporterNetworkMapCard extends LitElement {
       this._vb.w *= factor;
       this._vb.h *= factor;
       const rect = this._svgEl.getBoundingClientRect();
-      this._vb.x = svgPt.x - ((e.clientX - rect.left) / rect.width) * this._vb.w;
-      this._vb.y = svgPt.y - ((e.clientY - rect.top) / rect.height) * this._vb.h;
+      this._vb.x =
+        svgPt.x - ((e.clientX - rect.left) / rect.width) * this._vb.w;
+      this._vb.y =
+        svgPt.y - ((e.clientY - rect.top) / rect.height) * this._vb.h;
       this._zoomLevel = this._vbInitial.w / this._vb.w;
     } else {
       // Two-finger scroll (trackpad, small pixel deltas) → pan
