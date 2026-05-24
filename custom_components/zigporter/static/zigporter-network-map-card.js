@@ -133,6 +133,21 @@ class ZigporterNetworkMapCard extends LitElement {
       align-items: center;
       gap: 8px;
     }
+    .btn-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    @media (max-width: 600px) {
+      .header {
+        flex-wrap: wrap;
+      }
+      .btn-group {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+      }
+    }
     .action-btn {
       background: none;
       border: 1px solid var(--divider-color, #444);
@@ -325,71 +340,75 @@ class ZigporterNetworkMapCard extends LitElement {
             />`
           : html`<h2>${this._config.title}</h2>`}
         <div class="btn-group">
-          <button
-            class="action-btn"
-            title="Search"
-            @click=${this._toggleSearch}
-          >
-            Search
-          </button>
-          <button
-            class="toggle-btn ${!this._meshVisible ? "active" : ""}"
-            @click=${() => this._setMeshVisible(false)}
-          >
-            Tree
-          </button>
-          <button
-            class="toggle-btn ${this._meshVisible ? "active" : ""}"
-            @click=${() => this._setMeshVisible(true)}
-          >
-            Mesh
-          </button>
-          <button
-            class="toggle-btn ${this._alertsVisible ? "active" : ""}"
-            @click=${() => this._setAlertsVisible(!this._alertsVisible)}
-          >
-            Alerts
-          </button>
-          <a
-            class="action-btn"
-            href="https://nordstad.github.io/zigporter-hacs/"
-            target="_blank"
-            rel="noopener"
-            title="Documentation"
-            >Help</a
-          >
-          <button
-            class="action-btn"
-            title="Zoom in"
-            ?disabled=${this._buttonsDisabled}
-            @click=${() => this._zoomBy(0.7)}
-          >
-            +
-          </button>
-          <button
-            class="action-btn"
-            title="Zoom out"
-            ?disabled=${this._buttonsDisabled}
-            @click=${() => this._zoomBy(1 / 0.7)}
-          >
-            −
-          </button>
-          <button
-            class="action-btn"
-            title="Reset zoom"
-            ?disabled=${this._buttonsDisabled}
-            @click=${this._resetView}
-          >
-            Reset
-          </button>
-          <button
-            class="action-btn"
-            title="Refresh network scan"
-            ?disabled=${this._buttonsDisabled}
-            @click=${() => this._fetchMap(true)}
-          >
-            Scan
-          </button>
+          <div class="btn-row">
+            <button
+              class="action-btn"
+              title="Search"
+              @click=${this._toggleSearch}
+            >
+              Search
+            </button>
+            <button
+              class="toggle-btn ${!this._meshVisible ? "active" : ""}"
+              @click=${() => this._setMeshVisible(false)}
+            >
+              Tree
+            </button>
+            <button
+              class="toggle-btn ${this._meshVisible ? "active" : ""}"
+              @click=${() => this._setMeshVisible(true)}
+            >
+              Mesh
+            </button>
+            <button
+              class="toggle-btn ${this._alertsVisible ? "active" : ""}"
+              @click=${() => this._setAlertsVisible(!this._alertsVisible)}
+            >
+              Alerts
+            </button>
+            <a
+              class="action-btn"
+              href="https://nordstad.github.io/zigporter-hacs/"
+              target="_blank"
+              rel="noopener"
+              title="Documentation"
+              >Help</a
+            >
+          </div>
+          <div class="btn-row">
+            <button
+              class="action-btn"
+              title="Zoom in"
+              ?disabled=${this._buttonsDisabled}
+              @click=${() => this._zoomBy(0.7)}
+            >
+              +
+            </button>
+            <button
+              class="action-btn"
+              title="Zoom out"
+              ?disabled=${this._buttonsDisabled}
+              @click=${() => this._zoomBy(1 / 0.7)}
+            >
+              −
+            </button>
+            <button
+              class="action-btn"
+              title="Reset zoom"
+              ?disabled=${this._buttonsDisabled}
+              @click=${this._resetView}
+            >
+              Reset
+            </button>
+            <button
+              class="action-btn"
+              title="Refresh network scan"
+              ?disabled=${this._buttonsDisabled}
+              @click=${() => this._fetchMap(true)}
+            >
+              Scan
+            </button>
+          </div>
         </div>
         ${this._searchOpen && this._searchResults.length > 0
           ? html`<div class="search-dropdown">
