@@ -7,6 +7,8 @@ const SVG_WITH_MESH =
   '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><g class="mesh-links" style="display:none"><line x1="0" y1="0" x2="100" y2="100" stroke="#94a3b8"/></g><circle cx="50" cy="50" r="40"/></svg>';
 const SVG_NO_VIEWBOX =
   '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150"><rect width="200" height="150"/></svg>';
+const SVG_WITH_NODES =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000"><circle cx="500" cy="500" r="28" data-name="Coordinator"/><circle cx="300" cy="200" r="20" data-name="Kitchen Light"/><circle cx="700" cy="800" r="20" data-name="Kitchen Motion"/><circle cx="100" cy="900" r="14" data-name="Bedroom Sensor"/></svg>';
 const INVALID_SVG = "<not-valid-xml<>";
 
 function mockHass(wsHandler) {
@@ -511,12 +513,13 @@ describe("ZigporterNetworkMapCard", () => {
       el.setConfig({});
       await el.updateComplete;
       const buttons = el.renderRoot.querySelectorAll(".action-btn");
-      expect(buttons.length).to.equal(5);
-      expect(buttons[0].textContent.trim()).to.equal("Help");
-      expect(buttons[1].textContent.trim()).to.equal("+");
-      expect(buttons[2].textContent.trim()).to.equal("−");
-      expect(buttons[3].textContent.trim()).to.equal("Reset");
-      expect(buttons[4].textContent.trim()).to.equal("Scan");
+      expect(buttons.length).to.equal(6);
+      expect(buttons[0].textContent.trim()).to.equal("Search");
+      expect(buttons[1].textContent.trim()).to.equal("Help");
+      expect(buttons[2].textContent.trim()).to.equal("+");
+      expect(buttons[3].textContent.trim()).to.equal("−");
+      expect(buttons[4].textContent.trim()).to.equal("Reset");
+      expect(buttons[5].textContent.trim()).to.equal("Scan");
     });
 
     it("renders SVG content into map-container", async () => {
@@ -1650,6 +1653,278 @@ describe("ZigporterNetworkMapCard", () => {
 
       const svgEl = el.renderRoot.querySelector(".map-container svg");
       expect(svgEl.classList.contains("alerts-mode")).to.be.true;
+    });
+  });
+
+  describe("search", () => {
+    async function createCardWithNodes() {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+      el.hass = mockHass((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({
+          svg: SVG_WITH_NODES,
+          device_count: 4,
+          max_depth: 2,
+          scan_duration_ms: 500,
+          backend: "z2m",
+        });
+      });
+      await el.updateComplete;
+      await aTimeout(50);
+      await el.updateComplete;
+      return el;
+    }
+
+    it("toggleSearch opens search input and extracts device names", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      const input = el.renderRoot.querySelector(".search-input");
+      expect(input).to.exist;
+      expect(el._deviceNames).to.include("Kitchen Light");
+      expect(el._deviceNames).to.include("Kitchen Motion");
+      expect(el._deviceNames).to.include("Bedroom Sensor");
+    });
+
+    it("toggleSearch closes search and clears highlight", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._toggleSearch();
+      await el.updateComplete;
+      expect(el._searchOpen).to.be.false;
+      expect(el._searchQuery).to.equal("");
+      const input = el.renderRoot.querySelector(".search-input");
+      expect(input).to.not.exist;
+    });
+
+    it("onSearchInput filters device names by substring", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      expect(el._searchResults).to.have.lengthOf(2);
+      expect(el._searchResults).to.include("Kitchen Light");
+      expect(el._searchResults).to.include("Kitchen Motion");
+    });
+
+    it("onSearchInput with empty value clears results", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      el._onSearchInput({ target: { value: "" } });
+      expect(el._searchResults).to.have.lengthOf(0);
+    });
+
+    it("onSearchKeydown ArrowDown increments active index", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      el._onSearchKeydown({
+        key: "ArrowDown",
+        preventDefault: () => {},
+      });
+      expect(el._searchActiveIndex).to.equal(0);
+      el._onSearchKeydown({
+        key: "ArrowDown",
+        preventDefault: () => {},
+      });
+      expect(el._searchActiveIndex).to.equal(1);
+    });
+
+    it("onSearchKeydown ArrowUp decrements active index", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      el._searchActiveIndex = 1;
+      el._onSearchKeydown({
+        key: "ArrowUp",
+        preventDefault: () => {},
+      });
+      expect(el._searchActiveIndex).to.equal(0);
+    });
+
+    it("onSearchKeydown Enter selects active result", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      el._searchActiveIndex = 0;
+      el._onSearchKeydown({
+        key: "Enter",
+        preventDefault: () => {},
+      });
+      expect(el._searchQuery).to.equal(el._searchResults[0] || "Kitchen Light");
+    });
+
+    it("onSearchKeydown Escape closes search", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchKeydown({ key: "Escape", preventDefault: () => {} });
+      expect(el._searchOpen).to.be.false;
+    });
+
+    it("selectSearchResult sets query and navigates", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._selectSearchResult("Kitchen Light");
+      expect(el._searchQuery).to.equal("Kitchen Light");
+      expect(el._searchResults).to.have.lengthOf(0);
+    });
+
+    it("navigateToNode pans and zooms to target", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._navigateToNode("Kitchen Light");
+      expect(el._vb.x).to.be.closeTo(300 - el._vb.w / 2, 1);
+      expect(el._vb.y).to.be.closeTo(200 - el._vb.h / 2, 1);
+      expect(el._zoomLevel).to.be.greaterThan(1);
+    });
+
+    it("navigateToNode does nothing for unknown name", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      const vbBefore = { ...el._vb };
+      el._navigateToNode("Nonexistent Device");
+      expect(el._vb.x).to.equal(vbBefore.x);
+    });
+
+    it("highlightNode adds pulse ring", async () => {
+      const el = await createCardWithNodes();
+      const svg = el.renderRoot.querySelector(".map-container svg");
+      const circle = svg.querySelector('circle[data-name="Kitchen Light"]');
+      el._highlightNode(circle);
+      const ring = svg.querySelector(".search-highlight");
+      expect(ring).to.exist;
+      expect(ring.getAttribute("cx")).to.equal("300");
+      expect(ring.querySelector("animate")).to.exist;
+    });
+
+    it("clearHighlight removes all highlights", async () => {
+      const el = await createCardWithNodes();
+      const svg = el.renderRoot.querySelector(".map-container svg");
+      const circle = svg.querySelector('circle[data-name="Kitchen Light"]');
+      el._highlightNode(circle);
+      el._clearHighlight();
+      const ring = svg.querySelector(".search-highlight");
+      expect(ring).to.not.exist;
+    });
+
+    it("reset clears search state", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      el._selectSearchResult("Kitchen Light");
+      el._resetView();
+      expect(el._searchOpen).to.be.false;
+      expect(el._searchQuery).to.equal("");
+      expect(el._searchResults).to.have.lengthOf(0);
+    });
+
+    it("onSearchBlur with empty query closes search", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchBlur();
+      await aTimeout(250);
+      expect(el._searchOpen).to.be.false;
+    });
+
+    it("onSearchBlur with query only closes dropdown", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      el._onSearchBlur();
+      await aTimeout(250);
+      expect(el._searchOpen).to.be.true;
+      expect(el._searchResults).to.have.lengthOf(0);
+    });
+
+    it("renders dropdown items", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      await el.updateComplete;
+      const items = el.renderRoot.querySelectorAll(".search-dropdown-item");
+      expect(items.length).to.equal(2);
+    });
+
+    it("extractDeviceNames does nothing without SVG", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+      el._extractDeviceNames();
+      expect(el._deviceNames).to.have.lengthOf(0);
+    });
+
+    it("highlightNode does nothing without SVG", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+      const circle = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "circle",
+      );
+      circle.setAttribute("cx", "50");
+      circle.setAttribute("cy", "50");
+      el._highlightNode(circle);
+    });
+
+    it("clearHighlight does nothing without SVG", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+      el._clearHighlight();
+    });
+
+    it("navigateToNode does nothing without vb", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+      el._vb = null;
+      el._navigateToNode("test");
+    });
+
+    it("onSearchKeydown ignores unrelated keys", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      el._onSearchKeydown({ key: "a", preventDefault: () => {} });
+      expect(el._searchActiveIndex).to.equal(-1);
+    });
+
+    it("onSearchKeydown Enter does nothing without active index", async () => {
+      const el = await createCardWithNodes();
+      el._toggleSearch();
+      await el.updateComplete;
+      el._onSearchInput({ target: { value: "kitchen" } });
+      el._searchActiveIndex = -1;
+      el._onSearchKeydown({ key: "Enter", preventDefault: () => {} });
+      expect(el._searchQuery).to.equal("kitchen");
     });
   });
 });
