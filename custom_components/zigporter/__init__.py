@@ -28,8 +28,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     if not js_file.is_file():
         _LOGGER.error("Card JS file not found at %s", js_file)
 
-    manifest = json.loads((Path(__file__).parent / "manifest.json").read_text())
-    version = manifest.get("version", "0")
+    manifest_path = Path(__file__).parent / "manifest.json"
+    raw = await hass.async_add_executor_job(manifest_path.read_text)
+    version = json.loads(raw).get("version", "0")
 
     await hass.http.async_register_static_paths(
         [
