@@ -1,4 +1,11 @@
-import { fixture, html, expect, aTimeout, oneEvent } from "@open-wc/testing";
+import {
+  fixture,
+  html,
+  expect,
+  aTimeout,
+  oneEvent,
+  waitUntil,
+} from "@open-wc/testing";
 import "../../custom_components/zigporter/static/zigporter-network-map-card.js";
 
 const VALID_SVG =
@@ -586,7 +593,14 @@ describe("ZigporterNetworkMapCard", () => {
           resolveMap = r;
         });
       });
-      await aTimeout(1200);
+      await waitUntil(
+        () => el._elapsed >= 1,
+        "elapsed timer did not increment",
+        {
+          timeout: 5000,
+          interval: 100,
+        },
+      );
       await el.updateComplete;
 
       expect(el._elapsed).to.be.at.least(1);
