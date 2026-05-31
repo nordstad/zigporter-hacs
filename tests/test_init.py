@@ -40,6 +40,7 @@ def mock_entry():
 
 class TestAsyncSetup:
     async def test_registers_static_path_and_js_url(self, mock_hass):
+        mock_hass.async_add_executor_job = AsyncMock(return_value='{"version": "1.0.0"}')
         with (
             patch("custom_components.zigporter.add_extra_js_url") as mock_add_js,
             patch("custom_components.zigporter.async_register_websocket_commands") as mock_ws,
@@ -52,6 +53,7 @@ class TestAsyncSetup:
         mock_ws.assert_called_once_with(mock_hass)
 
     async def test_logs_error_when_js_file_missing(self, mock_hass):
+        mock_hass.async_add_executor_job = AsyncMock(return_value='{"version": "1.0.0"}')
         with (
             patch("custom_components.zigporter.add_extra_js_url"),
             patch("custom_components.zigporter.async_register_websocket_commands"),
