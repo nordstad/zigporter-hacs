@@ -35,7 +35,7 @@ from custom_components.zigporter.websocket_api import (
 
 
 @pytest.fixture
-def mock_hass():
+async def mock_hass():
     hass = MagicMock()
     hass.data = {DOMAIN: {}}
     hass.config_entries = MagicMock()
