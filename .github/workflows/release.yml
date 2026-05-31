@@ -32,31 +32,8 @@ jobs:
           cd custom_components/zigporter
           zip -r ../../zigporter.zip .
 
-      - name: Generate release notes from commits
-        id: notes
-        run: |
-          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
-          if [ -z "$PREV_TAG" ]; then
-            RANGE="HEAD"
-          else
-            RANGE="${PREV_TAG}..HEAD"
-          fi
-          NOTES=$(git log "$RANGE" --pretty=format:"- %s" \
-            | grep -v "^- release:" \
-            | grep -v "^- Merge" \
-            | grep -v "^- wip" \
-            | grep -v "^- Initial commit")
-          {
-            echo "notes<<EOF"
-            echo "## Changes"
-            echo ""
-            echo "$NOTES"
-            echo ""
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3
         with:
-          body: ${{ steps.notes.outputs.notes }}
+          generate_release_notes: true
           files: zigporter.zip
