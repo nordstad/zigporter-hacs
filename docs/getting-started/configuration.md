@@ -2,6 +2,10 @@
 
 ## Initial setup
 
+[![Add Integration to your Home Assistant instance.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=zigporter)
+
+Or manually:
+
 1. Go to **Settings → Devices & Services → Add Integration**.
 2. Search for "Zigporter".
 3. Select your Zigbee backend (**Zigbee2MQTT** or **ZHA**).
