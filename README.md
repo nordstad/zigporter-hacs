@@ -36,6 +36,10 @@ Copy `custom_components/zigporter/` to your HA `config/custom_components/` direc
 
 ## Setup
 
+[![Add Integration to your Home Assistant instance.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=zigporter)
+
+Or manually:
+
 1. **Settings → Devices & Services → Add Integration** → search "Zigporter".
 2. Select your Zigbee backend (**Zigbee2MQTT** or **ZHA**).
 3. If using Zigbee2MQTT, confirm the MQTT topic prefix (default: `zigbee2mqtt`).
