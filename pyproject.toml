@@ -11,7 +11,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-cov>=7.1.0",
-    "ruff>=0.8",
+    "ruff>=0.15.17",
     "voluptuous>=0.14",
 ]
 
