@@ -9,3 +9,22 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "aiohttp"
+      - dependency-name: "cryptography"
+      - dependency-name: "homeassistant"
+      - dependency-name: "idna"
+      - dependency-name: "jinja2"
+      - dependency-name: "orjson"
+      - dependency-name: "pillow"
+      - dependency-name: "pyjwt"
+      - dependency-name: "pyopenssl"
+      - dependency-name: "requests"
+      - dependency-name: "urllib3"
+      - dependency-name: "uv"
+      - dependency-name: "zeroconf"
