@@ -12,7 +12,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.17",
-    "voluptuous>=0.14",
+    "voluptuous>=0.16.0",
 ]
 
 [tool.ruff]
