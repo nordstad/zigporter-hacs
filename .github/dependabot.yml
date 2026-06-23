@@ -27,4 +27,3 @@ updates:
       - dependency-name: "requests"
       - dependency-name: "urllib3"
       - dependency-name: "uv"
-      - dependency-name: "zeroconf"
