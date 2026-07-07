@@ -313,16 +313,20 @@ class ZigporterNetworkMapCard extends LitElement {
     return html`
       <ha-card>
         ${this._renderHeader()}
-        ${this._config.show_stats && this._stats
-          ? html`<div class="stats">${this._stats}</div>`
-          : nothing}
+        ${
+          this._config.show_stats && this._stats
+            ? html`<div class="stats">${this._stats}</div>`
+            : nothing
+        }
         ${this._renderLegend()}
         <div class="map-container">
-          ${this._loading
-            ? this._renderLoading()
-            : this._error
-              ? this._renderError()
-              : this._renderMap()}
+          ${
+            this._loading
+              ? this._renderLoading()
+              : this._error
+                ? this._renderError()
+                : this._renderMap()
+          }
         </div>
       </ha-card>
     `;
@@ -331,17 +335,19 @@ class ZigporterNetworkMapCard extends LitElement {
   _renderHeader() {
     return html`
       <div class="header">
-        ${this._searchOpen
-          ? html`<input
-              class="search-input"
-              type="text"
-              placeholder="Search devices…"
-              .value=${this._searchQuery}
-              @input=${this._onSearchInput}
-              @keydown=${this._onSearchKeydown}
-              @blur=${this._onSearchBlur}
-            />`
-          : html`<h2>${this._config.title}</h2>`}
+        ${
+          this._searchOpen
+            ? html`<input
+                class="search-input"
+                type="text"
+                placeholder="Search devices…"
+                .value=${this._searchQuery}
+                @input=${this._onSearchInput}
+                @keydown=${this._onSearchKeydown}
+                @blur=${this._onSearchBlur}
+              />`
+            : html`<h2>${this._config.title}</h2>`
+        }
         <div class="btn-group">
           <div class="btn-row">
             <button
@@ -413,22 +419,24 @@ class ZigporterNetworkMapCard extends LitElement {
             </button>
           </div>
         </div>
-        ${this._searchOpen && this._searchResults.length > 0
-          ? html`<div class="search-dropdown">
-              ${this._searchResults.map(
-                (name, i) => html`
-                  <div
-                    class="search-dropdown-item ${i === this._searchActiveIndex
-                      ? "active"
-                      : ""}"
-                    @mousedown=${() => this._selectSearchResult(name)}
-                  >
-                    ${name}
-                  </div>
-                `,
-              )}
-            </div>`
-          : nothing}
+        ${
+          this._searchOpen && this._searchResults.length > 0
+            ? html`<div class="search-dropdown">
+                ${this._searchResults.map(
+                  (name, i) => html`
+                    <div
+                      class="search-dropdown-item ${
+                        i === this._searchActiveIndex ? "active" : ""
+                      }"
+                      @mousedown=${() => this._selectSearchResult(name)}
+                    >
+                      ${name}
+                    </div>
+                  `,
+                )}
+              </div>`
+            : nothing
+        }
       </div>
     `;
   }
@@ -499,9 +507,11 @@ class ZigporterNetworkMapCard extends LitElement {
           Scroll to zoom, drag to pan. On mobile: pinch to zoom. Use Reset to
           restore view.
         </div>
-        ${this._elapsed > 0
-          ? html`<div class="timer">${this._elapsed}s elapsed</div>`
-          : nothing}
+        ${
+          this._elapsed > 0
+            ? html`<div class="timer">${this._elapsed}s elapsed</div>`
+            : nothing
+        }
       </div>
     `;
   }
