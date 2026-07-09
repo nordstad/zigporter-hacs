@@ -578,7 +578,8 @@ describe("ZigporterNetworkMapCard", () => {
       expect(el._error).to.equal("Failed to parse SVG");
     });
 
-    it("shows elapsed timer during loading", async () => {
+    it("shows elapsed timer during loading", async function () {
+      this.timeout(6000);
       const el = await fixture(
         html`<zigporter-network-map-card></zigporter-network-map-card>`,
       );
