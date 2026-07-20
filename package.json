@@ -9,7 +9,7 @@
     "format": "prettier --write \"custom_components/zigporter/static/**/*.js\" \"tests/js/**/*.js\" \"web-test-runner.config.mjs\""
   },
   "devDependencies": {
-    "@open-wc/testing": "^4.0.0",
+    "@open-wc/testing": "^5.0.0",
     "@web/test-runner": "^1.0.0",
     "@web/test-runner-playwright": "^1.0.0",
     "lit": "^3.0.0",
