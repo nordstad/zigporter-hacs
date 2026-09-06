@@ -43,12 +43,16 @@ from .network_map_svg import render_svg
 
 _LOGGER = logging.getLogger(__name__)
 
+_HISTORY_LIMIT = 30  # max stored snapshots before pruning oldest
+
 
 @callback
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register WebSocket commands."""
     websocket_api.async_register_command(hass, ws_network_map)
     websocket_api.async_register_command(hass, ws_scan_status)
+    websocket_api.async_register_command(hass, ws_history_list)
+    websocket_api.async_register_command(hass, ws_history_get)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "zigporter/scan_status"})
@@ -139,6 +143,59 @@ async def ws_network_map(
     connection.send_result(msg["id"], result)
 
 
+@websocket_api.websocket_command({vol.Required("type"): "zigporter/history_list"})
+@websocket_api.async_response
+async def ws_history_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return metadata for stored historical scan snapshots, newest first."""
+    entry = _get_config_entry(hass)
+    cache_path = None
+    if entry is not None:
+        cache_path = hass.data[DOMAIN].get(entry.entry_id, {}).get("cache_path")
+
+    if not cache_path:
+        connection.send_result(msg["id"], {"snapshots": []})
+        return
+
+    snapshots = await hass.async_add_executor_job(_list_history, cache_path)
+    connection.send_result(msg["id"], {"snapshots": snapshots})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "zigporter/history_get",
+        vol.Required("snapshot_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_history_get(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return a single historical scan snapshot (including its SVG) by id."""
+    entry = _get_config_entry(hass)
+    cache_path = None
+    if entry is not None:
+        cache_path = hass.data[DOMAIN].get(entry.entry_id, {}).get("cache_path")
+
+    if not cache_path:
+        connection.send_error(msg["id"], "not_found", "Snapshot not found")
+        return
+
+    result = await hass.async_add_executor_job(
+        _read_history_snapshot, cache_path, msg["snapshot_id"]
+    )
+    if result is None:
+        connection.send_error(msg["id"], "not_found", "Snapshot not found")
+        return
+
+    connection.send_result(msg["id"], result)
+
+
 async def _run_scan(hass: HomeAssistant, entry: Any, backend: str) -> dict[str, Any]:
     """Execute a network scan, render SVG, cache and return the result."""
     hass.data[DOMAIN][entry.entry_id]["scan_start_utc"] = datetime.now(UTC).isoformat()
@@ -221,6 +278,7 @@ async def _run_scan(hass: HomeAssistant, entry: Any, backend: str) -> dict[str, 
     if cache_path:
         try:
             await hass.async_add_executor_job(_save_cache, cache_path, result)
+            await hass.async_add_executor_job(_save_history_snapshot, cache_path, result)
         except OSError:
             _LOGGER.warning("Failed to save network map cache to %s", cache_path)
 
@@ -232,6 +290,64 @@ def _save_cache(path: str, data: dict) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(data))
+
+
+def _history_dir(cache_path: str) -> Path:
+    """Return the directory used to store historical scan snapshots."""
+    return Path(cache_path).parent / "history"
+
+
+def _save_history_snapshot(cache_path: str, result: dict) -> None:
+    """Persist a scan result as a history snapshot and prune old ones."""
+    history_dir = _history_dir(cache_path)
+    history_dir.mkdir(parents=True, exist_ok=True)
+
+    snapshot_id = str(int(time.time() * 1000))
+    entry_path = history_dir / f"{snapshot_id}.json"
+    entry_path.write_text(json.dumps({**result, "id": snapshot_id}))
+
+    snapshots = sorted(history_dir.glob("*.json"))
+    excess = len(snapshots) - _HISTORY_LIMIT
+    for old_file in snapshots[:excess]:
+        old_file.unlink(missing_ok=True)
+
+
+def _list_history(cache_path: str) -> list[dict[str, Any]]:
+    """Read history snapshot metadata (excluding SVG payload) from disk, newest first."""
+    history_dir = _history_dir(cache_path)
+    if not history_dir.is_dir():
+        return []
+
+    snapshots = []
+    for path in sorted(history_dir.glob("*.json"), reverse=True):
+        try:
+            data = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        snapshots.append(
+            {
+                "id": data.get("id", path.stem),
+                "scan_timestamp": data.get("scan_timestamp"),
+                "device_count": data.get("device_count"),
+                "max_depth": data.get("max_depth"),
+                "backend": data.get("backend"),
+                "scan_duration_ms": data.get("scan_duration_ms"),
+            }
+        )
+    return snapshots
+
+
+def _read_history_snapshot(cache_path: str, snapshot_id: str) -> dict[str, Any] | None:
+    """Read a single history snapshot's full data (including SVG) from disk."""
+    if not snapshot_id.isdigit():  # reject path traversal / malformed ids
+        return None
+    path = _history_dir(cache_path) / f"{snapshot_id}.json"
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def _get_config_entry(hass: HomeAssistant):

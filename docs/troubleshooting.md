@@ -10,9 +10,11 @@
 
 1. Check the real traceback in **Settings → System → Logs** (search for "zigporter").
 2. Delete the bytecode cache:
+
    ```
    rm -rf /config/custom_components/zigporter/__pycache__/
    ```
+
 3. Restart Home Assistant.
 
 ### Card not appearing after install
@@ -36,7 +38,7 @@ Large Zigbee networks (50+ devices) can take several minutes to scan. The Z2M co
 Typical scan times by network size:
 
 | Devices | Expected time |
-|---------|---------------|
+| --------- | --------------- |
 | 10–20 | 15–30s |
 | 30–50 | 40–70s |
 | 50–100 | 1–3 min |
@@ -68,9 +70,16 @@ Typical scan times by network size:
 The integration loads the last cached scan from disk on startup. This is expected behavior — click **Scan** to capture fresh topology.
 
 If you see an old `.gz` sidecar file causing issues:
+
 ```
 rm /config/custom_components/zigporter/static/*.gz
 ```
+
+### History is empty after updating
+
+**Cause:** Scan history is only recorded starting from the version that introduced it. Snapshots aren't backfilled from before the update, and the new `zigporter/history_list`/`zigporter/history_get` WebSocket commands aren't registered until Home Assistant restarts.
+
+**Fix:** Restart Home Assistant after updating, then click **Scan** — each scan from that point on is saved to `/config/zigporter/history/` and appears in the **History** dropdown. No cache deletion is needed for this update; the existing `network_map_cache.json` format is unchanged.
 
 ### Wrong backend auto-detected
 

@@ -21,6 +21,9 @@ class ZigporterNetworkMapCard extends LitElement {
     _searchQuery: { state: true },
     _searchResults: { state: true },
     _searchActiveIndex: { state: true },
+    _historyOpen: { state: true },
+    _historyList: { state: true },
+    _historySnapshot: { state: true },
   };
 
   static styles = css`
@@ -168,6 +171,11 @@ class ZigporterNetworkMapCard extends LitElement {
       opacity: 0.3;
       cursor: default;
     }
+    .action-btn.active {
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+      border-color: var(--primary-color);
+    }
     a.action-btn {
       text-decoration: none;
     }
@@ -224,6 +232,61 @@ class ZigporterNetworkMapCard extends LitElement {
       background: var(--primary-color);
       color: var(--text-primary-color, #fff);
     }
+    .history-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 16px;
+      margin-top: 4px;
+      background: var(--card-background-color, #1e1e1e);
+      border: 1px solid var(--divider-color, #444);
+      border-radius: 4px;
+      max-height: 280px;
+      overflow-y: auto;
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      min-width: 260px;
+    }
+    .history-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--primary-text-color);
+      border-bottom: 1px solid var(--divider-color, #333);
+    }
+    .history-item:last-child {
+      border-bottom: none;
+    }
+    .history-item:hover {
+      background: var(--secondary-background-color);
+    }
+    .history-item-meta {
+      font-size: 11px;
+      color: var(--secondary-text-color);
+    }
+    .history-empty {
+      padding: 12px;
+      font-size: 13px;
+      color: var(--secondary-text-color);
+    }
+    .history-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 16px;
+      font-size: 13px;
+      background: var(--secondary-background-color);
+      border-bottom: 1px solid var(--divider-color, #333);
+    }
+    .history-banner button {
+      background: none;
+      border: 1px solid var(--divider-color, #444);
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--primary-text-color);
+      padding: 2px 10px;
+      font-size: 12px;
+    }
   `;
 
   static getStubConfig() {
@@ -256,6 +319,9 @@ class ZigporterNetworkMapCard extends LitElement {
     this._searchResults = [];
     this._searchActiveIndex = -1;
     this._deviceNames = [];
+    this._historyOpen = false;
+    this._historyList = [];
+    this._historySnapshot = null;
 
     this._boundOnWheel = (e) => this._onWheel(e);
     this._boundOnPointerDown = (e) => this._onPointerDown(e);
@@ -313,6 +379,7 @@ class ZigporterNetworkMapCard extends LitElement {
     return html`
       <ha-card>
         ${this._renderHeader()}
+        ${this._historySnapshot ? this._renderHistoryBanner() : nothing}
         ${
           this._config.show_stats && this._stats
             ? html`<div class="stats">${this._stats}</div>`
@@ -329,6 +396,18 @@ class ZigporterNetworkMapCard extends LitElement {
           }
         </div>
       </ha-card>
+    `;
+  }
+
+  _renderHistoryBanner() {
+    return html`
+      <div class="history-banner">
+        <span
+          >Viewing scan from
+          ${this._formatHistoryTimestamp(this._historySnapshot.scan_timestamp)}</span
+        >
+        <button @click=${this._exitHistoryView}>Back to live</button>
+      </div>
     `;
   }
 
@@ -417,6 +496,13 @@ class ZigporterNetworkMapCard extends LitElement {
             >
               Scan
             </button>
+            <button
+              class="action-btn ${this._historyOpen ? "active" : ""}"
+              title="View past scans"
+              @click=${this._toggleHistory}
+            >
+              History
+            </button>
           </div>
         </div>
         ${
@@ -434,6 +520,35 @@ class ZigporterNetworkMapCard extends LitElement {
                     </div>
                   `,
                 )}
+              </div>`
+            : nothing
+        }
+        ${
+          this._historyOpen
+            ? html`<div class="history-dropdown">
+                ${
+                  this._historyList.length === 0
+                    ? html`<div class="history-empty">
+                        No saved scans yet. Run a scan to start building
+                        history.
+                      </div>`
+                    : this._historyList.map(
+                        (snap) => html`
+                          <div
+                            class="history-item"
+                            @mousedown=${() => this._selectHistorySnapshot(snap.id)}
+                          >
+                            <div>
+                              ${this._formatHistoryTimestamp(snap.scan_timestamp)}
+                            </div>
+                            <div class="history-item-meta">
+                              ${snap.device_count} devices · ${snap.max_depth}
+                              hops
+                            </div>
+                          </div>
+                        `,
+                      )
+                }
               </div>`
             : nothing
         }
@@ -535,6 +650,7 @@ class ZigporterNetworkMapCard extends LitElement {
     this._buttonsDisabled = true;
     this._error = null;
     this._svgContent = null;
+    this._historySnapshot = null;
 
     let timerOffset = 0;
     if (!forceRefresh) {
@@ -646,6 +762,65 @@ class ZigporterNetworkMapCard extends LitElement {
     const svgEl = this.renderRoot.querySelector(".map-container svg");
     if (!svgEl) return;
     svgEl.classList.toggle("alerts-mode", visible);
+  }
+
+  // --- History ---
+
+  async _toggleHistory() {
+    this._historyOpen = !this._historyOpen;
+    if (!this._historyOpen || !this._hass) return;
+
+    try {
+      const { snapshots } = await this._hass.callWS({
+        type: "zigporter/history_list",
+      });
+      this._historyList = snapshots || [];
+    } catch (_) {
+      this._historyList = [];
+    }
+  }
+
+  async _selectHistorySnapshot(snapshotId) {
+    if (!this._hass) return;
+    this._historyOpen = false;
+    this._buttonsDisabled = true;
+    this._error = null;
+
+    try {
+      const result = await this._hass.callWS({
+        type: "zigporter/history_get",
+        snapshot_id: snapshotId,
+      });
+
+      const svgString = this._processSvg(result.svg);
+      if (!svgString) {
+        this._error = "Failed to parse SVG";
+        return;
+      }
+
+      this._svgContent = svgString;
+      this._historySnapshot = result;
+      this._loading = false;
+
+      if (this._config.show_stats) {
+        const backendLabel = result.backend === "zha" ? "ZHA" : "Z2M";
+        this._stats = `${backendLabel} · ${result.device_count} devices · ${result.max_depth} hops`;
+      }
+    } catch (err) {
+      this._error = err.message || "Failed to load snapshot";
+    } finally {
+      this._buttonsDisabled = false;
+    }
+  }
+
+  _exitHistoryView() {
+    this._historySnapshot = null;
+    this._fetchMap(false);
+  }
+
+  _formatHistoryTimestamp(iso) {
+    if (!iso) return "unknown time";
+    return new Date(iso).toLocaleString();
   }
 
   // --- Search ---
