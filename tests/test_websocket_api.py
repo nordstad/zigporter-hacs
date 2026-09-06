@@ -26,9 +26,15 @@ from custom_components.zigporter.websocket_api import (
     _fetch_z2m_topology,
     _fetch_zha_topology,
     _get_config_entry,
+    _history_dir,
+    _list_history,
+    _read_history_snapshot,
     _run_scan,
     _save_cache,
+    _save_history_snapshot,
     async_register_websocket_commands,
+    ws_history_get,
+    ws_history_list,
     ws_network_map,
     ws_scan_status,
 )
@@ -63,10 +69,10 @@ def mock_connection():
 
 
 class TestAsyncRegisterWebsocketCommands:
-    def test_registers_both_commands(self, mock_hass):
+    def test_registers_all_commands(self, mock_hass):
         with patch("custom_components.zigporter.websocket_api.websocket_api") as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 2
+            assert mock_ws_api.async_register_command.call_count == 4
 
 
 class TestGetConfigEntry:
@@ -403,6 +409,166 @@ class TestSaveCache:
         _save_cache(path, {"test": True})
 
         assert Path(path).exists()
+
+
+class TestSaveHistorySnapshot:
+    def test_writes_snapshot_with_id(self, tmp_path):
+        cache_path = str(tmp_path / "network_map_cache.json")
+
+        _save_history_snapshot(cache_path, {"svg": "<svg/>", "device_count": 3})
+
+        files = list((tmp_path / "history").glob("*.json"))
+        assert len(files) == 1
+        saved = json.loads(files[0].read_text())
+        assert saved["device_count"] == 3
+        assert saved["id"] == files[0].stem
+
+    def test_prunes_oldest_beyond_limit(self, tmp_path):
+        cache_path = str(tmp_path / "network_map_cache.json")
+        history_dir = tmp_path / "history"
+        history_dir.mkdir()
+        for i in range(35):
+            (history_dir / f"{i:03d}.json").write_text(json.dumps({"id": f"{i:03d}"}))
+
+        _save_history_snapshot(cache_path, {"svg": "<svg/>"})
+
+        remaining = sorted(history_dir.glob("*.json"))
+        assert len(remaining) == 30
+        assert remaining[0].stem == "006"
+
+
+class TestListHistory:
+    def test_returns_empty_when_no_dir(self, tmp_path):
+        cache_path = str(tmp_path / "network_map_cache.json")
+        assert _list_history(cache_path) == []
+
+    def test_returns_metadata_newest_first(self, tmp_path):
+        cache_path = str(tmp_path / "network_map_cache.json")
+        history_dir = tmp_path / "history"
+        history_dir.mkdir()
+        (history_dir / "100.json").write_text(
+            json.dumps(
+                {
+                    "id": "100",
+                    "svg": "<svg>old</svg>",
+                    "scan_timestamp": "2026-01-01T00:00:00Z",
+                    "device_count": 2,
+                    "max_depth": 1,
+                    "backend": "zigbee2mqtt",
+                    "scan_duration_ms": 100,
+                }
+            )
+        )
+        (history_dir / "200.json").write_text(
+            json.dumps(
+                {
+                    "id": "200",
+                    "svg": "<svg>new</svg>",
+                    "scan_timestamp": "2026-01-02T00:00:00Z",
+                    "device_count": 3,
+                    "max_depth": 2,
+                    "backend": "zigbee2mqtt",
+                    "scan_duration_ms": 200,
+                }
+            )
+        )
+
+        snapshots = _list_history(cache_path)
+
+        assert [s["id"] for s in snapshots] == ["200", "100"]
+        assert "svg" not in snapshots[0]
+
+    def test_skips_corrupt_files(self, tmp_path):
+        cache_path = str(tmp_path / "network_map_cache.json")
+        history_dir = tmp_path / "history"
+        history_dir.mkdir()
+        (history_dir / "bad.json").write_text("not json")
+
+        assert _list_history(cache_path) == []
+
+
+class TestReadHistorySnapshot:
+    def test_reads_full_snapshot(self, tmp_path):
+        cache_path = str(tmp_path / "network_map_cache.json")
+        history_dir = tmp_path / "history"
+        history_dir.mkdir()
+        (history_dir / "123.json").write_text(json.dumps({"id": "123", "svg": "<svg/>"}))
+
+        result = _read_history_snapshot(cache_path, "123")
+
+        assert result == {"id": "123", "svg": "<svg/>"}
+
+    def test_returns_none_when_missing(self, tmp_path):
+        cache_path = str(tmp_path / "network_map_cache.json")
+        assert _read_history_snapshot(cache_path, "999") is None
+
+    def test_rejects_non_numeric_id(self, tmp_path):
+        cache_path = str(tmp_path / "network_map_cache.json")
+        history_dir = _history_dir(cache_path)
+        history_dir.mkdir(parents=True)
+        (history_dir / "..%2Fsecret.json").write_text("{}")
+
+        assert _read_history_snapshot(cache_path, "../secret") is None
+
+    def test_returns_none_on_corrupt_file(self, tmp_path):
+        cache_path = str(tmp_path / "network_map_cache.json")
+        history_dir = _history_dir(cache_path)
+        history_dir.mkdir(parents=True)
+        (history_dir / "456.json").write_text("not json")
+
+        assert _read_history_snapshot(cache_path, "456") is None
+
+
+class TestWsHistoryList:
+    async def test_returns_empty_when_no_entry(self, mock_hass, mock_connection):
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[])
+        msg = {"id": 1, "type": "zigporter/history_list"}
+
+        await ws_history_list(mock_hass, mock_connection, msg)
+
+        mock_connection.send_result.assert_called_once_with(1, {"snapshots": []})
+
+    async def test_returns_snapshots(self, mock_hass, mock_entry, mock_connection):
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+        mock_hass.data[DOMAIN][mock_entry.entry_id] = {"cache_path": "/tmp/x/cache.json"}
+        mock_hass.async_add_executor_job = AsyncMock(return_value=[{"id": "1"}])
+        msg = {"id": 1, "type": "zigporter/history_list"}
+
+        await ws_history_list(mock_hass, mock_connection, msg)
+
+        mock_connection.send_result.assert_called_once_with(1, {"snapshots": [{"id": "1"}]})
+
+
+class TestWsHistoryGet:
+    async def test_error_when_no_cache_path(self, mock_hass, mock_entry, mock_connection):
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+        mock_hass.data[DOMAIN][mock_entry.entry_id] = {"cache_path": None}
+        msg = {"id": 1, "type": "zigporter/history_get", "snapshot_id": "123"}
+
+        await ws_history_get(mock_hass, mock_connection, msg)
+
+        mock_connection.send_error.assert_called_once_with(1, "not_found", "Snapshot not found")
+
+    async def test_error_when_snapshot_missing(self, mock_hass, mock_entry, mock_connection):
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+        mock_hass.data[DOMAIN][mock_entry.entry_id] = {"cache_path": "/tmp/x/cache.json"}
+        mock_hass.async_add_executor_job = AsyncMock(return_value=None)
+        msg = {"id": 1, "type": "zigporter/history_get", "snapshot_id": "123"}
+
+        await ws_history_get(mock_hass, mock_connection, msg)
+
+        mock_connection.send_error.assert_called_once_with(1, "not_found", "Snapshot not found")
+
+    async def test_returns_snapshot(self, mock_hass, mock_entry, mock_connection):
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+        mock_hass.data[DOMAIN][mock_entry.entry_id] = {"cache_path": "/tmp/x/cache.json"}
+        snapshot = {"id": "123", "svg": "<svg/>"}
+        mock_hass.async_add_executor_job = AsyncMock(return_value=snapshot)
+        msg = {"id": 1, "type": "zigporter/history_get", "snapshot_id": "123"}
+
+        await ws_history_get(mock_hass, mock_connection, msg)
+
+        mock_connection.send_result.assert_called_once_with(1, snapshot)
 
 
 class TestFetchZ2mTopology:

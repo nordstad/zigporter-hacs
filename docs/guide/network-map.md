@@ -19,7 +19,7 @@ Publishes to `zigbee2mqtt/bridge/request/networkmap` via MQTT. The response incl
 Scan times depend on network size:
 
 | Devices | Typical scan time |
-|---------|-------------------|
+| --------- | ------------------- |
 | 10–20 | 15–30s |
 | 30–50 | 40–70s |
 | 50–100 | 1–3 min |
@@ -65,7 +65,7 @@ Dims all healthy devices and highlights only those with critical signal (LQI bel
 Link Quality Indicator (LQI) is a 0–255 value reported by Zigbee devices. Higher is better.
 
 | Range | Color | Edge style | Meaning |
-|-------|-------|------------|---------|
+| ------- | ------- | ------------ | --------- |
 | Above warning threshold | Green | Solid | Good signal |
 | Between warning and critical | Yellow | Solid | Degraded signal |
 | Below critical threshold (1–19) | Red | Solid | Poor signal — may drop packets |
@@ -102,3 +102,9 @@ Z2M · 48 devices · 9 hops · 66.8s · estimated
 Scan results are saved to `/config/zigporter/network_map_cache.json` and persist across HA restarts. The map loads from cache on startup — click **Scan** to capture a fresh topology.
 
 With `Cache TTL = 0` (default), the cached map never auto-expires. Set a value (in seconds) if you want the card to show a "stale" indicator after a certain period.
+
+## History
+
+Every scan is saved as a snapshot in `/config/zigporter/history/`, letting you compare your network over time. Click **History** in the card header to see a list of past scans by date, device count, and hop depth. Selecting one displays that snapshot's map with a banner showing when it was taken — click **Back to live** to return to the current view.
+
+Up to 30 snapshots are kept; the oldest is dropped automatically once the limit is reached.

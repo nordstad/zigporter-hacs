@@ -520,13 +520,14 @@ describe("ZigporterNetworkMapCard", () => {
       el.setConfig({});
       await el.updateComplete;
       const buttons = el.renderRoot.querySelectorAll(".action-btn");
-      expect(buttons.length).to.equal(6);
+      expect(buttons.length).to.equal(7);
       expect(buttons[0].textContent.trim()).to.equal("Search");
       expect(buttons[1].textContent.trim()).to.equal("Help");
       expect(buttons[2].textContent.trim()).to.equal("+");
       expect(buttons[3].textContent.trim()).to.equal("−");
       expect(buttons[4].textContent.trim()).to.equal("Reset");
       expect(buttons[5].textContent.trim()).to.equal("Scan");
+      expect(buttons[6].textContent.trim()).to.equal("History");
     });
 
     it("renders SVG content into map-container", async () => {
@@ -1940,6 +1941,234 @@ describe("ZigporterNetworkMapCard", () => {
       el._searchActiveIndex = -1;
       el._onSearchKeydown({ key: "Enter", preventDefault: () => {} });
       expect(el._searchQuery).to.equal("kitchen");
+    });
+  });
+
+  describe("history", () => {
+    async function createCard(wsHandler) {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      el.hass = mockHass(wsHandler);
+      await aTimeout(50);
+      await el.updateComplete;
+      return el;
+    }
+
+    it("toggleHistory fetches and shows the snapshot list", async () => {
+      const snapshots = [
+        {
+          id: "200",
+          scan_timestamp: "2026-01-02T00:00:00Z",
+          device_count: 3,
+          max_depth: 2,
+        },
+      ];
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        if (msg.type === "zigporter/history_list")
+          return Promise.resolve({ snapshots });
+        return Promise.resolve({
+          svg: VALID_SVG,
+          device_count: 5,
+          max_depth: 3,
+          scan_duration_ms: 500,
+          backend: "z2m",
+        });
+      });
+
+      await el._toggleHistory();
+      await el.updateComplete;
+
+      expect(el._historyOpen).to.be.true;
+      expect(el._historyList).to.deep.equal(snapshots);
+      const items = el.renderRoot.querySelectorAll(".history-item");
+      expect(items.length).to.equal(1);
+      expect(items[0].textContent).to.include("3 devices");
+    });
+
+    it("toggleHistory closes without refetching", async () => {
+      const el = await createCard();
+      el._historyOpen = true;
+      el._historyList = [{ id: "1" }];
+      await el._toggleHistory();
+      expect(el._historyOpen).to.be.false;
+    });
+
+    it("toggleHistory shows empty state when no snapshots exist", async () => {
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        if (msg.type === "zigporter/history_list")
+          return Promise.resolve({ snapshots: [] });
+        return Promise.resolve({ svg: VALID_SVG });
+      });
+
+      await el._toggleHistory();
+      await el.updateComplete;
+
+      const empty = el.renderRoot.querySelector(".history-empty");
+      expect(empty).to.exist;
+    });
+
+    it("toggleHistory clears list on WS failure", async () => {
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        if (msg.type === "zigporter/history_list")
+          return Promise.reject(new Error("boom"));
+        return Promise.resolve({ svg: VALID_SVG });
+      });
+
+      await el._toggleHistory();
+
+      expect(el._historyList).to.have.lengthOf(0);
+    });
+
+    it("toggleHistory defaults to empty list when snapshots is missing", async () => {
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        if (msg.type === "zigporter/history_list") return Promise.resolve({});
+        return Promise.resolve({ svg: VALID_SVG });
+      });
+
+      await el._toggleHistory();
+
+      expect(el._historyList).to.have.lengthOf(0);
+    });
+
+    it("selectHistorySnapshot loads snapshot and shows banner", async () => {
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        if (msg.type === "zigporter/history_get")
+          return Promise.resolve({
+            id: "200",
+            svg: VALID_SVG,
+            device_count: 4,
+            max_depth: 2,
+            backend: "z2m",
+            scan_timestamp: "2026-01-02T00:00:00Z",
+          });
+        return Promise.resolve({ svg: VALID_SVG });
+      });
+
+      await el._selectHistorySnapshot("200");
+      await el.updateComplete;
+
+      expect(el._historyOpen).to.be.false;
+      expect(el._historySnapshot.id).to.equal("200");
+      expect(el._stats).to.include("4 devices");
+      const banner = el.renderRoot.querySelector(".history-banner");
+      expect(banner).to.exist;
+      expect(banner.textContent).to.include("Viewing scan from");
+    });
+
+    it("selectHistorySnapshot handles parse failure", async () => {
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        if (msg.type === "zigporter/history_get")
+          return Promise.resolve({ svg: INVALID_SVG });
+        return Promise.resolve({ svg: VALID_SVG });
+      });
+
+      await el._selectHistorySnapshot("bad");
+
+      expect(el._error).to.equal("Failed to parse SVG");
+    });
+
+    it("selectHistorySnapshot handles WS error", async () => {
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        if (msg.type === "zigporter/history_get")
+          return Promise.reject(new Error("not_found"));
+        return Promise.resolve({ svg: VALID_SVG });
+      });
+
+      await el._selectHistorySnapshot("missing");
+
+      expect(el._error).to.equal("not_found");
+    });
+
+    it("selectHistorySnapshot uses ZHA backend label", async () => {
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        if (msg.type === "zigporter/history_get")
+          return Promise.resolve({
+            id: "1",
+            svg: VALID_SVG,
+            device_count: 2,
+            max_depth: 1,
+            backend: "zha",
+            scan_timestamp: "2026-01-01T00:00:00Z",
+          });
+        return Promise.resolve({ svg: VALID_SVG });
+      });
+
+      await el._selectHistorySnapshot("1");
+
+      expect(el._stats).to.include("ZHA");
+    });
+
+    it("selectHistorySnapshot falls back to default error message", async () => {
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        if (msg.type === "zigporter/history_get") return Promise.reject({});
+        return Promise.resolve({ svg: VALID_SVG });
+      });
+
+      await el._selectHistorySnapshot("missing");
+
+      expect(el._error).to.equal("Failed to load snapshot");
+    });
+
+    it("selectHistorySnapshot does nothing without hass", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el._selectHistorySnapshot("1");
+      expect(el._historySnapshot).to.be.null;
+    });
+
+    it("exitHistoryView clears snapshot and refetches live map", async () => {
+      const el = await createCard((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({
+          svg: VALID_SVG,
+          device_count: 5,
+          max_depth: 3,
+          scan_duration_ms: 500,
+          backend: "z2m",
+        });
+      });
+      el._historySnapshot = { id: "1", scan_timestamp: "2026-01-01T00:00:00Z" };
+      await el.updateComplete;
+
+      el._exitHistoryView();
+      await aTimeout(50);
+
+      expect(el._historySnapshot).to.be.null;
+    });
+
+    it("formatHistoryTimestamp handles missing timestamp", async () => {
+      const el = await createCard();
+      expect(el._formatHistoryTimestamp(null)).to.equal("unknown time");
+    });
+
+    it("formatHistoryTimestamp formats a valid ISO string", async () => {
+      const el = await createCard();
+      expect(el._formatHistoryTimestamp("2026-01-02T00:00:00Z")).to.equal(
+        new Date("2026-01-02T00:00:00Z").toLocaleString(),
+      );
     });
   });
 });
