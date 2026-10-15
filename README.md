@@ -126,7 +126,7 @@ Install via `uv tool install zigporter`, `pip install zigporter`, or `brew tap n
 
 Zigporter was featured by [BeardedTinker](https://www.youtube.com/@BeardedTinker) in [Home Assistant Finally Lets Me Organize Everything!](https://youtu.be/z577_82asxU?t=298), where he walks through how to use it.
 
-[![Home Assistant Finally Lets Me Organize Everything! by BeardedTinker](https://img.youtube.com/vi/z577_82asxU/hqdefault.jpg)](https://youtu.be/z577_82asxU?t=298)
+[![Home Assistant Finally Lets Me Organize Everything! by BeardedTinker](https://img.youtube.com/vi/z577_82asxU/maxresdefault.jpg)](https://youtu.be/z577_82asxU?t=298)
 
 ## License
 
