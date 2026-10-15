@@ -4,7 +4,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/releases)
 [![Downloads](https://img.shields.io/github/downloads/nordstad/zigporter-hacs/total)](https://github.com/nordstad/zigporter-hacs/releases)
 [![Validate](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml/badge.svg)](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml)
-[![Docs](https://img.shields.io/badge/docs-nordstad.github.io-teal)](https://nordstad.github.io/zigporter-hacs/)
+[![Docs](https://img.shields.io/badge/docs-online-teal)](https://nordstad.github.io/zigporter-hacs/)
 [![License: MIT](https://img.shields.io/github/license/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/blob/main/LICENSE)
 
 <p align="center">
@@ -122,6 +122,12 @@ Install via `uv tool install zigporter`, `pip install zigporter`, or `brew tap n
 
 [Documentation](https://nordstad.github.io/zigporter/) · [Interactive demo](https://nordstad.github.io/zigporter/interactive-demo/)
 
+## In the wild
+
+Zigporter was featured by [BeardedTinker](https://www.youtube.com/@BeardedTinker) in [Home Assistant Finally Lets Me Organize Everything!](https://youtu.be/z577_82asxU?t=298), where he walks through how to use it.
+
 ## License
 
 [MIT](LICENSE)
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E8B328RXDO)
