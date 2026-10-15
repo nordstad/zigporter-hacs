@@ -45,6 +45,8 @@ type: custom:zigporter-network-map-card
 
 Zigporter was featured by [BeardedTinker](https://www.youtube.com/@BeardedTinker) in [Home Assistant Finally Lets Me Organize Everything!](https://youtu.be/z577_82asxU?t=298), where he walks through how to use it.
 
+<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/z577_82asxU?start=298" title="Home Assistant Finally Lets Me Organize Everything! by BeardedTinker" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 ## Related: Zigporter CLI
 
 This HACS integration is the Home Assistant-native companion to [**Zigporter CLI**](https://github.com/nordstad/zigporter) — a terminal tool for migrating ZHA ↔ Z2M, cascade-renaming entities, and exporting network maps.
