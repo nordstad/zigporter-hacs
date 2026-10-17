@@ -76,9 +76,9 @@ The card JS is registered automatically — no manual resource setup needed.
 
 > **First install:** After adding the integration, refresh your browser (F5) before adding the card. The card resource is registered on integration load, but the browser needs a page refresh to pick it up.
 
-### Adding the card (recommended: Panel view)
+### Adding the card
 
-The network map works best as a full-page card in a **Panel** view:
+> **Important:** The card must be added to its own **Panel** view. It is sized to fill the whole page and does not display correctly in Sections or Masonry views.
 
 1. Open your dashboard and click the **pencil icon** (top-right) to enter edit mode.
 2. Click the **+** tab to create a new view.
@@ -93,8 +93,6 @@ type: custom:zigporter-network-map-card
 6. Click **Save**, then **Done** to exit edit mode.
 
 The map will appear empty until you click **Scan** to request the first network topology.
-
-> **Alternative:** You can also add the card inside a Sections or Masonry view by clicking the **+** inside any section — the card will just be smaller.
 
 ### Card options
 

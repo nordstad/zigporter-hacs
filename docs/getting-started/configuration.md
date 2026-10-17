@@ -33,9 +33,10 @@ Click **Configure** on the Zigporter integration card to adjust settings.
 
 The card JS is registered automatically — no manual resource setup needed.
 
-### Adding the card (Panel view — recommended)
+### Adding the card
 
-The network map works best as a full-page card in a **Panel** view:
+!!! warning
+    The card must be added to its own **Panel** view. It is sized to fill the whole page and does not display correctly in Sections or Masonry views.
 
 1. Open your dashboard → **pencil icon** (top-right) → edit mode.
 2. Click the **+** tab to create a new view.
@@ -52,7 +53,3 @@ type: custom:zigporter-network-map-card
 |--------|---------|-------------|
 | `title` | `Zigbee Network Map` | Card header text |
 | `show_stats` | `true` | Show device count, hops, and scan duration |
-
-### Alternative layouts
-
-You can also add the card inside a Sections or Masonry view — it will just be smaller. The card uses `height: calc(100vh - 140px)` in Panel mode for full viewport coverage.
