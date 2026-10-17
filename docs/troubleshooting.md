@@ -33,7 +33,7 @@ The card JavaScript is registered when the integration loads, but the browser ne
 
 Large Zigbee networks (50+ devices) can take several minutes to scan. The Z2M coordinator queries each device sequentially.
 
-**Fix:** Increase the scan timeout in integration options (default: 600s, max: 600s, range: 60–600s).
+**Fix:** Increase the scan timeout in integration options (default: 1000s, range: 60–1200s).
 
 Typical scan times by network size:
 

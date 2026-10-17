@@ -21,10 +21,10 @@ Click **Configure** on the Zigporter integration card to adjust settings.
 | MQTT topic | `zigbee2mqtt` | — | Topic prefix for Zigbee2MQTT |
 | Warning LQI | `50` | 1–255 | Links below this threshold show yellow |
 | Critical LQI | `20` | 1–255 | Links below this threshold show red |
-| Scan timeout | `600` | 60–600s | Maximum wait time for a network scan |
+| Scan timeout | `1000` | 60–1200s | Maximum wait time for a network scan |
 | Cache TTL | `0` | 0–3600s | Seconds before cached map expires (`0` = manual refresh only) |
-| Hop colors 1–4 | *(empty)* | Hex color | Custom ring gradient colors (see [Colors & theming](../guide/colors.md)) |
-| Hop opacity | `0.80` | 0.1–1.0 | Opacity of hop ring fills |
+| Hop colors 1–4 | *(built-in palette)* | Hex color | Custom ring gradient colors (see [Colors & theming](../guide/colors.md)) |
+| Hop opacity | `0.90` | 0.1–1.0 | Opacity of hop ring fills |
 
 !!! tip
     If you have both ZHA and Zigbee2MQTT running, you can switch between them in options to view either network — no need to remove and re-add the integration.

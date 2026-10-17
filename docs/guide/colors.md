@@ -11,7 +11,7 @@ The radial map uses a gradient of four colors for hop rings (concentric circles 
 | Hop 3 | `#9A8678` | Warm taupe |
 | Hop 4+ (furthest) | `#CAAA98` | Light sand |
 
-Default opacity: **0.80**
+Default opacity: **0.90**
 
 ## Finding colors
 

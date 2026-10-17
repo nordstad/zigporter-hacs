@@ -2,7 +2,7 @@
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![GitHub Release](https://img.shields.io/github/v/release/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/releases)
-[![Downloads](https://img.shields.io/github/downloads/nordstad/zigporter-hacs/total)](https://github.com/nordstad/zigporter-hacs/releases)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.8%2B-blue)](https://www.home-assistant.io/)
 [![Validate](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml/badge.svg)](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml)
 [![Docs](https://img.shields.io/badge/docs-online-teal)](https://nordstad.github.io/zigporter-hacs/)
 [![License: MIT](https://img.shields.io/github/license/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/blob/main/LICENSE)
@@ -15,11 +15,24 @@ Zigbee network topology map for Home Assistant. Visualize your mesh network with
 
 Supports both **Zigbee2MQTT** and **ZHA** backends.
 
+<p align="center">
+  <img src="docs/assets/demo-network.svg" alt="Demo network map" width="700">
+</p>
+
 **[Documentation](https://nordstad.github.io/zigporter-hacs/)** · [Getting started](https://nordstad.github.io/zigporter-hacs/getting-started/installation/) · [Troubleshooting](https://nordstad.github.io/zigporter-hacs/troubleshooting/)
+
+## Requirements
+
+- Home Assistant **2024.8.0** or newer
+- One of:
+  - **Zigbee2MQTT** with the MQTT integration configured
+  - **ZHA** integration configured
 
 ## Installation
 
 ### HACS (recommended)
+
+Zigporter is not yet in the HACS default store, so it is added as a custom repository. The button below does this for you:
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=nordstad&repository=zigporter-hacs&category=integration)
 
@@ -54,14 +67,14 @@ Click **Configure** on the integration to adjust:
 | MQTT topic | `zigbee2mqtt` | Topic prefix for Z2M (only relevant when backend is Z2M) |
 | Warning LQI | 50 | Links below this show yellow |
 | Critical LQI | 20 | Links below this show red |
-| Scan timeout | 600s | Max wait for network scan (60–600s) |
+| Scan timeout | 1000s | Max wait for network scan (60–1200s) |
 | Cache TTL | 0 | Seconds to cache the map (0 = manual refresh only) |
-| Hop colors 1–4 | `#101819` `#1C2829` `#2B3A3A` `#425352` | Custom ring gradient colors ([details](https://nordstad.github.io/zigporter-hacs/guide/colors/)) |
+| Hop colors | *(built-in palette)* | Four custom ring gradient colors ([details](https://nordstad.github.io/zigporter-hacs/guide/colors/)) |
 | Hop opacity | 0.90 | Opacity of hop ring fills (0.1–1.0) |
 
 > **Tip:** If you have both ZHA and Zigbee2MQTT running, you can switch between them in options to view either network — no need to remove and re-add the integration.
 
-## Dashboard Card
+## Dashboard card
 
 The card JS is registered automatically — no manual resource setup needed.
 
@@ -94,7 +107,7 @@ The map will appear empty until you click **Scan** to request the first network 
 | `title` | Zigbee Network Map | Card header text |
 | `show_stats` | `true` | Show device count, hops, and scan duration |
 
-## How It Works
+## How it works
 
 The integration requests a network topology scan from your Zigbee backend, builds a routing tree using bidirectional LQI for best-path parent selection, renders it as a radial SVG, and delivers it to the card via WebSocket.
 
@@ -128,8 +141,13 @@ Zigporter was featured by [BeardedTinker](https://www.youtube.com/@BeardedTinker
 
 [![Home Assistant Finally Lets Me Organize Everything! by BeardedTinker](https://img.youtube.com/vi/z577_82asxU/maxresdefault.jpg)](https://youtu.be/z577_82asxU?t=298)
 
+## Support
+
+- Something not working? Check [Troubleshooting](https://nordstad.github.io/zigporter-hacs/troubleshooting/), then [open an issue](https://github.com/nordstad/zigporter-hacs/issues).
+- Enjoying Zigporter? You can support development on Ko-fi.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/nordstad)
+
 ## License
 
 [MIT](LICENSE)
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E8B328RXDO)
