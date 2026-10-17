@@ -1,4 +1,4 @@
-<h1><img src="https://raw.githubusercontent.com/nordstad/zigporter-hacs/main/custom_components/zigporter/brand/icon.png" alt="" width="40" align="center"> Zigporter</h1>
+<h1><img src="https://raw.githubusercontent.com/nordstad/zigporter-hacs/main/custom_components/zigporter/brand/icon.png" alt="" width="40" align="absmiddle"> Zigporter</h1>
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![GitHub Release](https://img.shields.io/github/v/release/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/releases)
