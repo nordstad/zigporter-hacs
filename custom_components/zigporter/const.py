@@ -3,6 +3,7 @@
 DOMAIN = "zigporter"
 
 CONF_BACKEND = "backend"
+CONF_NAME = "name"
 CONF_MQTT_TOPIC = "mqtt_topic"
 CONF_WARN_LQI = "warn_lqi"
 CONF_CRITICAL_LQI = "critical_lqi"

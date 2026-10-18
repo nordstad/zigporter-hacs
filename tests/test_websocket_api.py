@@ -55,6 +55,7 @@ async def mock_hass():
 def mock_entry():
     entry = MagicMock()
     entry.entry_id = "test_entry"
+    entry.title = "Zigporter"
     entry.data = {CONF_BACKEND: BACKEND_Z2M, CONF_MQTT_TOPIC: "zigbee2mqtt"}
     entry.options = {}
     return entry
@@ -181,7 +182,9 @@ class TestWsNetworkMap:
 
         await ws_network_map(mock_hass, mock_connection, msg)
 
-        mock_connection.send_result.assert_called_once_with(1, cached)
+        mock_connection.send_result.assert_called_once_with(
+            1, {**cached, "entry_title": "Zigporter"}
+        )
 
     async def test_serves_cache_when_ttl_not_expired(self, mock_hass, mock_entry, mock_connection):
         mock_entry.options = {CONF_CACHE_TTL: 300}
@@ -195,7 +198,9 @@ class TestWsNetworkMap:
 
         await ws_network_map(mock_hass, mock_connection, msg)
 
-        mock_connection.send_result.assert_called_once_with(1, cached)
+        mock_connection.send_result.assert_called_once_with(
+            1, {**cached, "entry_title": "Zigporter"}
+        )
 
     async def test_does_not_serve_expired_cache(self, mock_hass, mock_entry, mock_connection):
         mock_entry.options = {CONF_CACHE_TTL: 10, CONF_BACKEND: BACKEND_Z2M}
@@ -214,7 +219,9 @@ class TestWsNetworkMap:
         ):
             await ws_network_map(mock_hass, mock_connection, msg)
 
-        mock_connection.send_result.assert_called_once_with(1, scan_result)
+        mock_connection.send_result.assert_called_once_with(
+            1, {**scan_result, "entry_title": "Zigporter"}
+        )
 
     async def test_error_when_no_backend(self, mock_hass, mock_entry, mock_connection):
         mock_entry.options = {CONF_BACKEND: "invalid"}
@@ -242,7 +249,9 @@ class TestWsNetworkMap:
 
         await ws_network_map(mock_hass, mock_connection, msg)
 
-        mock_connection.send_result.assert_called_once_with(1, scan_result)
+        mock_connection.send_result.assert_called_once_with(
+            1, {**scan_result, "entry_title": "Zigporter"}
+        )
 
     async def test_scan_failure_sends_error(self, mock_hass, mock_entry, mock_connection):
         mock_entry.options = {CONF_BACKEND: BACKEND_Z2M}
@@ -834,6 +843,7 @@ class TestFetchZhaTopology:
 def _z2m_entry(entry_id: str, topic: str) -> MagicMock:
     entry = MagicMock()
     entry.entry_id = entry_id
+    entry.title = f"Building {entry_id}"
     entry.data = {CONF_BACKEND: BACKEND_Z2M, CONF_MQTT_TOPIC: topic}
     entry.options = {}
     return entry
@@ -906,6 +916,7 @@ class TestMultipleBridges:
         result = mock_connection.send_result.call_args[0][1]
         assert result["device_count"] == 3
         assert result["mqtt_topic"] == "zigbee2mqtt/b2"
+        assert result["entry_title"] == "Building b2"
 
     async def test_caches_are_independent(self, mock_hass, bridges, fake_mqtt, mock_connection):
         for request_id, entry_id in enumerate(("b1", "b2"), start=1):
@@ -930,6 +941,23 @@ class TestMultipleBridges:
             {"id": 3, "type": "zigporter/network_map", "force_refresh": False, "entry_id": "b1"},
         )
         assert mock_connection.send_result.call_args[0][1]["device_count"] == 2
+
+    async def test_entry_title_is_not_cached(self, mock_hass, bridges, fake_mqtt, mock_connection):
+        await ws_network_map(
+            mock_hass,
+            mock_connection,
+            {"id": 1, "type": "zigporter/network_map", "force_refresh": True, "entry_id": "b1"},
+        )
+        assert "entry_title" not in mock_hass.data[DOMAIN]["b1"]["cache"]
+
+        bridges[0].title = "Renamed"
+        mock_connection.send_result.reset_mock()
+        await ws_network_map(
+            mock_hass,
+            mock_connection,
+            {"id": 2, "type": "zigporter/network_map", "force_refresh": False, "entry_id": "b1"},
+        )
+        assert mock_connection.send_result.call_args[0][1]["entry_title"] == "Renamed"
 
     async def test_without_entry_id_uses_first_entry(
         self, mock_hass, bridges, fake_mqtt, mock_connection

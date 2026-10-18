@@ -6,11 +6,13 @@
         "description": "Configure the Zigbee backend for the network map.",
         "data": {
           "backend": "Zigbee backend",
-          "mqtt_topic": "MQTT topic prefix"
+          "mqtt_topic": "MQTT topic prefix",
+          "name": "Name (optional)"
         },
         "data_description": {
           "backend": "Select which Zigbee integration to use for topology data.",
-          "mqtt_topic": "MQTT topic prefix for Zigbee2MQTT (usually 'zigbee2mqtt')."
+          "mqtt_topic": "MQTT topic prefix for Zigbee2MQTT (usually 'zigbee2mqtt').",
+          "name": "Friendly name for this bridge, e.g. 'Building 1'. Shown as the card title. Can be renamed later."
         }
       }
     },

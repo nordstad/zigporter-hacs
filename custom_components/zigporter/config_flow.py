@@ -24,6 +24,7 @@ from .const import (
     CONF_HOP_COLOR_4,
     CONF_HOP_OPACITY,
     CONF_MQTT_TOPIC,
+    CONF_NAME,
     CONF_SCAN_TIMEOUT,
     CONF_WARN_LQI,
     DEFAULT_CACHE_TTL,
@@ -98,11 +99,11 @@ class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
                 title = "Zigporter (ZHA)" if backend == BACKEND_ZHA else f"Zigporter ({topic})"
                 if not existing:
                     title = "Zigporter"
+                title = (user_input.get(CONF_NAME) or "").strip() or title
                 await self.async_set_unique_id(_unique_id(backend, topic))
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=title, data={**user_input, CONF_MQTT_TOPIC: topic}
-                )
+                data = {k: v for k, v in user_input.items() if k != CONF_NAME}
+                return self.async_create_entry(title=title, data={**data, CONF_MQTT_TOPIC: topic})
 
         schema = vol.Schema(
             {
@@ -113,6 +114,7 @@ class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
                     }
                 ),
                 vol.Optional(CONF_MQTT_TOPIC, default=DEFAULT_MQTT_TOPIC): str,
+                vol.Optional(CONF_NAME): str,
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)

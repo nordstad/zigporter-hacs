@@ -24,6 +24,7 @@ from custom_components.zigporter.const import (
     CONF_HOP_COLOR_4,
     CONF_HOP_OPACITY,
     CONF_MQTT_TOPIC,
+    CONF_NAME,
     CONF_SCAN_TIMEOUT,
     CONF_WARN_LQI,
     DEFAULT_CACHE_TTL,
@@ -308,6 +309,27 @@ class TestConfigFlowUserStep:
         assert result["title"] == "Zigporter"
         assert result["data"][CONF_MQTT_TOPIC] == "zigbee2mqtt"
         flow.async_set_unique_id.assert_awaited_once_with("z2m:zigbee2mqtt")
+
+    async def test_name_is_used_as_title_and_not_stored(self):
+        flow = _config_flow([_entry("a", topic="zigbee2mqtt/b1")])
+        result = await flow.async_step_user(
+            {
+                CONF_BACKEND: BACKEND_Z2M,
+                CONF_MQTT_TOPIC: "zigbee2mqtt/b2",
+                CONF_NAME: "  Building 2 ",
+            }
+        )
+
+        assert result["title"] == "Building 2"
+        assert CONF_NAME not in result["data"]
+
+    async def test_blank_name_falls_back_to_generated_title(self):
+        flow = _config_flow([_entry("a", topic="zigbee2mqtt/b1")])
+        result = await flow.async_step_user(
+            {CONF_BACKEND: BACKEND_Z2M, CONF_MQTT_TOPIC: "zigbee2mqtt/b2", CONF_NAME: "   "}
+        )
+
+        assert result["title"] == "Zigporter (zigbee2mqtt/b2)"
 
     async def test_second_bridge_is_allowed_and_named_by_topic(self):
         flow = _config_flow([_entry("a", topic="zigbee2mqtt/b1")])

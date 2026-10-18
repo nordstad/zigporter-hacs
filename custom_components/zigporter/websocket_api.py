@@ -110,7 +110,7 @@ async def ws_network_map(
     if scan_task is not None and not scan_task.done():
         try:
             result = await asyncio.shield(scan_task)
-            connection.send_result(msg["id"], result)
+            connection.send_result(msg["id"], _with_entry_title(result, entry))
         except asyncio.CancelledError:  # pragma: no cover
             return
         except Exception as exc:  # noqa: BLE001
@@ -119,11 +119,11 @@ async def ws_network_map(
 
     if not force_refresh and cache_data.get("cache") is not None:
         if cache_ttl <= 0:
-            connection.send_result(msg["id"], cache_data["cache"])
+            connection.send_result(msg["id"], _with_entry_title(cache_data["cache"], entry))
             return
         cache_age = time.monotonic() - (cache_data.get("cache_time") or 0)
         if cache_age < cache_ttl:
-            connection.send_result(msg["id"], cache_data["cache"])
+            connection.send_result(msg["id"], _with_entry_title(cache_data["cache"], entry))
             return
 
     backend = entry.options.get(CONF_BACKEND, entry.data.get(CONF_BACKEND))
@@ -146,7 +146,7 @@ async def ws_network_map(
         connection.send_error(msg["id"], "scan_failed", str(exc))
         return
 
-    connection.send_result(msg["id"], result)
+    connection.send_result(msg["id"], _with_entry_title(result, entry))
 
 
 @websocket_api.websocket_command(
@@ -375,6 +375,11 @@ def _get_config_entry(hass: HomeAssistant, entry_id: str | None = None):
         legacy = next((entry for entry in entries if entry.unique_id == DOMAIN), None)
         return legacy or (entries[0] if entries else None)
     return next((entry for entry in entries if entry.entry_id == entry_id), None)
+
+
+def _with_entry_title(result: dict[str, Any], entry: Any) -> dict[str, Any]:
+    """Add the current entry name to a response (not cached, so renames apply at once)."""
+    return {**result, "entry_title": entry.title}
 
 
 def _get_mqtt_topic(entry: Any) -> str:
