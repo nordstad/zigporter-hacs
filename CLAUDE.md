@@ -33,6 +33,8 @@ Before committing, always run linting and both test suites to catch CI failures 
 
 ## Git Workflow
 
+This project is hosted on GitHub: use the `gh` CLI for PRs, issues, releases and workflow runs.
+
 After merging a PR, always delete the branch both locally and on remote:
 
 ```bash
