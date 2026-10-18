@@ -2,6 +2,7 @@
 
 import json
 import logging
+import shutil
 import time
 from pathlib import Path
 
@@ -47,11 +48,23 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+def _cache_path(hass: HomeAssistant, entry: ConfigEntry) -> Path:
+    """Return the cache file for an entry.
+
+    The original single entry (unique id == DOMAIN) keeps the legacy location so
+    existing caches and history survive; every other entry gets its own folder.
+    """
+    base = Path(hass.config.path("zigporter"))
+    if entry.unique_id == DOMAIN:
+        return base / "network_map_cache.json"
+    return base / entry.entry_id / "network_map_cache.json"
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Zigporter from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
-    cache_path = Path(hass.config.path("zigporter")) / "network_map_cache.json"
+    cache_path = _cache_path(hass, entry)
     cache = None
     cache_time = None
 
@@ -85,3 +98,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a Zigporter config entry."""
     hass.data[DOMAIN].pop(entry.entry_id, None)
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete the stored cache and history of a removed entry."""
+    if entry.unique_id == DOMAIN:
+        return
+    entry_dir = Path(hass.config.path("zigporter")) / entry.entry_id
+    await hass.async_add_executor_job(shutil.rmtree, entry_dir, True)

@@ -1,6 +1,7 @@
 """Tests for __init__.py — integration setup, config entry, and cache loading."""
 
 import json
+import shutil
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,6 +9,7 @@ import pytest
 
 from custom_components.zigporter import (
     _async_options_updated,
+    async_remove_entry,
     async_setup,
     async_setup_entry,
     async_unload_entry,
@@ -31,6 +33,7 @@ def mock_hass():
 def mock_entry():
     entry = MagicMock()
     entry.entry_id = "test_entry_123"
+    entry.unique_id = "z2m:zigbee2mqtt"
     entry.options = {}
     entry.data = {}
     entry.async_on_unload = MagicMock()
@@ -101,6 +104,23 @@ class TestAsyncSetupEntry:
         entry_data = mock_hass.data[DOMAIN][mock_entry.entry_id]
         assert entry_data["cache"] is None
 
+    async def test_legacy_entry_keeps_original_cache_path(self, mock_hass, mock_entry):
+        mock_entry.unique_id = DOMAIN
+        mock_hass.async_add_executor_job = AsyncMock(return_value=False)
+
+        await async_setup_entry(mock_hass, mock_entry)
+
+        cache_path = mock_hass.data[DOMAIN][mock_entry.entry_id]["cache_path"]
+        assert cache_path == "/config/zigporter/network_map_cache.json"
+
+    async def test_new_entry_gets_own_cache_folder(self, mock_hass, mock_entry):
+        mock_hass.async_add_executor_job = AsyncMock(return_value=False)
+
+        await async_setup_entry(mock_hass, mock_entry)
+
+        cache_path = mock_hass.data[DOMAIN][mock_entry.entry_id]["cache_path"]
+        assert cache_path == "/config/zigporter/test_entry_123/network_map_cache.json"
+
     async def test_registers_update_listener(self, mock_hass, mock_entry):
         mock_hass.data.setdefault(DOMAIN, {})
         mock_hass.async_add_executor_job = AsyncMock(return_value=False)
@@ -146,3 +166,21 @@ class TestAsyncUnloadEntry:
         result = await async_unload_entry(mock_hass, mock_entry)
 
         assert result is True
+
+
+class TestAsyncRemoveEntry:
+    async def test_deletes_entry_folder(self, mock_hass, mock_entry):
+        await async_remove_entry(mock_hass, mock_entry)
+
+        mock_hass.async_add_executor_job.assert_awaited_once()
+        func, path, ignore_errors = mock_hass.async_add_executor_job.call_args[0]
+        assert func is shutil.rmtree
+        assert str(path) == "/config/zigporter/test_entry_123"
+        assert ignore_errors is True
+
+    async def test_keeps_legacy_files(self, mock_hass, mock_entry):
+        mock_entry.unique_id = DOMAIN
+
+        await async_remove_entry(mock_hass, mock_entry)
+
+        mock_hass.async_add_executor_job.assert_not_awaited()

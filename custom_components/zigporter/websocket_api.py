@@ -55,7 +55,12 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_history_get)
 
 
-@websocket_api.websocket_command({vol.Required("type"): "zigporter/scan_status"})
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "zigporter/scan_status",
+        vol.Optional("entry_id"): str,
+    }
+)
 @websocket_api.async_response
 async def ws_scan_status(
     hass: HomeAssistant,
@@ -63,7 +68,7 @@ async def ws_scan_status(
     msg: dict[str, Any],
 ) -> None:
     """Return whether a scan is currently in progress."""
-    entry = _get_config_entry(hass)
+    entry = _get_config_entry(hass, msg.get("entry_id"))
     if entry is None:
         connection.send_result(msg["id"], {"scanning": False})
         return
@@ -81,6 +86,7 @@ async def ws_scan_status(
     {
         vol.Required("type"): "zigporter/network_map",
         vol.Optional("force_refresh", default=False): bool,
+        vol.Optional("entry_id"): str,
     }
 )
 @websocket_api.async_response
@@ -90,7 +96,7 @@ async def ws_network_map(
     msg: dict[str, Any],
 ) -> None:
     """Handle a network map request."""
-    entry = _get_config_entry(hass)
+    entry = _get_config_entry(hass, msg.get("entry_id"))
     if entry is None:
         connection.send_error(msg["id"], "not_configured", "Zigporter is not configured")
         return
@@ -143,7 +149,12 @@ async def ws_network_map(
     connection.send_result(msg["id"], result)
 
 
-@websocket_api.websocket_command({vol.Required("type"): "zigporter/history_list"})
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "zigporter/history_list",
+        vol.Optional("entry_id"): str,
+    }
+)
 @websocket_api.async_response
 async def ws_history_list(
     hass: HomeAssistant,
@@ -151,7 +162,7 @@ async def ws_history_list(
     msg: dict[str, Any],
 ) -> None:
     """Return metadata for stored historical scan snapshots, newest first."""
-    entry = _get_config_entry(hass)
+    entry = _get_config_entry(hass, msg.get("entry_id"))
     cache_path = None
     if entry is not None:
         cache_path = hass.data[DOMAIN].get(entry.entry_id, {}).get("cache_path")
@@ -168,6 +179,7 @@ async def ws_history_list(
     {
         vol.Required("type"): "zigporter/history_get",
         vol.Required("snapshot_id"): str,
+        vol.Optional("entry_id"): str,
     }
 )
 @websocket_api.async_response
@@ -177,7 +189,7 @@ async def ws_history_get(
     msg: dict[str, Any],
 ) -> None:
     """Return a single historical scan snapshot (including its SVG) by id."""
-    entry = _get_config_entry(hass)
+    entry = _get_config_entry(hass, msg.get("entry_id"))
     cache_path = None
     if entry is not None:
         cache_path = hass.data[DOMAIN].get(entry.entry_id, {}).get("cache_path")
@@ -268,6 +280,7 @@ async def _run_scan(hass: HomeAssistant, entry: Any, backend: str) -> dict[str, 
         "max_depth": max_depth,
         "scan_duration_ms": scan_duration_ms,
         "backend": backend,
+        "mqtt_topic": _get_mqtt_topic(entry) if backend == BACKEND_Z2M else None,
         "scan_timestamp": datetime.now(UTC).isoformat(),
     }
 
@@ -350,19 +363,24 @@ def _read_history_snapshot(cache_path: str, snapshot_id: str) -> dict[str, Any] 
         return None
 
 
-def _get_config_entry(hass: HomeAssistant):
-    """Get the first Zigporter config entry."""
+def _get_config_entry(hass: HomeAssistant, entry_id: str | None = None):
+    """Get a Zigporter config entry by id, or the first one when no id is given."""
     entries = hass.config_entries.async_entries(DOMAIN)
-    return entries[0] if entries else None
+    if entry_id is None:
+        return entries[0] if entries else None
+    return next((entry for entry in entries if entry.entry_id == entry_id), None)
+
+
+def _get_mqtt_topic(entry: Any) -> str:
+    """Return the Zigbee2MQTT topic prefix configured for an entry."""
+    return entry.options.get(CONF_MQTT_TOPIC, entry.data.get(CONF_MQTT_TOPIC, DEFAULT_MQTT_TOPIC))
 
 
 async def _fetch_z2m_topology(
     hass: HomeAssistant, entry: Any, timeout: int = DEFAULT_SCAN_TIMEOUT
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]] | None:
     """Fetch topology from Zigbee2MQTT via MQTT."""
-    topic_prefix = entry.options.get(
-        CONF_MQTT_TOPIC, entry.data.get(CONF_MQTT_TOPIC, DEFAULT_MQTT_TOPIC)
-    )
+    topic_prefix = _get_mqtt_topic(entry)
     response_topic = f"{topic_prefix}/bridge/response/networkmap"
     request_topic = f"{topic_prefix}/bridge/request/networkmap"
 

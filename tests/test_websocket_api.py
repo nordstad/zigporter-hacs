@@ -86,6 +86,23 @@ class TestGetConfigEntry:
         assert _get_config_entry(mock_hass) is None
 
 
+class TestGetConfigEntryById:
+    def test_returns_matching_entry(self, mock_hass):
+        first, second = MagicMock(entry_id="a"), MagicMock(entry_id="b")
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[first, second])
+        assert _get_config_entry(mock_hass, "b") is second
+
+    def test_returns_none_for_unknown_id(self, mock_hass):
+        first = MagicMock(entry_id="a")
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[first])
+        assert _get_config_entry(mock_hass, "missing") is None
+
+    def test_no_id_still_returns_first(self, mock_hass):
+        first, second = MagicMock(entry_id="a"), MagicMock(entry_id="b")
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[first, second])
+        assert _get_config_entry(mock_hass) is first
+
+
 class TestWsScanStatus:
     async def test_returns_not_scanning_when_no_entry(self, mock_hass, mock_connection):
         mock_hass.config_entries.async_entries = MagicMock(return_value=[])
@@ -806,3 +823,167 @@ class TestFetchZhaTopology:
             del sys.modules["homeassistant.components.zha.helpers"]
 
         assert result is None
+
+
+def _z2m_entry(entry_id: str, topic: str) -> MagicMock:
+    entry = MagicMock()
+    entry.entry_id = entry_id
+    entry.data = {CONF_BACKEND: BACKEND_Z2M, CONF_MQTT_TOPIC: topic}
+    entry.options = {}
+    return entry
+
+
+def _networkmap_payload(device_count: int) -> dict:
+    nodes = [{"ieeeAddr": "0x001", "friendlyName": "Coord", "type": "Coordinator"}]
+    links = []
+    for i in range(2, device_count + 1):
+        ieee = f"0x{i:03d}"
+        nodes.append({"ieeeAddr": ieee, "friendlyName": f"R{i}", "type": "Router"})
+        links.append({"source": {"ieeeAddr": ieee}, "target": {"ieeeAddr": "0x001"}, "lqi": 200})
+    return {"data": {"value": {"nodes": nodes, "links": links}}}
+
+
+class TestMultipleBridges:
+    @pytest.fixture
+    def bridges(self, mock_hass):
+        entries = [_z2m_entry("b1", "zigbee2mqtt/b1"), _z2m_entry("b2", "zigbee2mqtt/b2")]
+        mock_hass.config_entries.async_entries = MagicMock(return_value=entries)
+        for entry in entries:
+            mock_hass.data[DOMAIN][entry.entry_id] = {"cache": None, "cache_path": None}
+        return entries
+
+    @pytest.fixture
+    def fake_mqtt(self):
+        """Fake Z2M bridges: b1 has 2 devices, b2 has 3. Records published topics."""
+        payloads = {
+            "zigbee2mqtt/b1/bridge/response/networkmap": _networkmap_payload(2),
+            "zigbee2mqtt/b2/bridge/response/networkmap": _networkmap_payload(3),
+        }
+        subscribed: list[str] = []
+        published: list[str] = []
+
+        async def subscribe(hass, topic, callback, qos=0):
+            subscribed.append(topic)
+            msg = MagicMock()
+            msg.payload = json.dumps(payloads[topic])
+            callback(msg)
+            return MagicMock()
+
+        async def publish(hass, topic, payload, qos=0):
+            published.append(topic)
+
+        with (
+            patch(
+                "custom_components.zigporter.websocket_api.mqtt.async_subscribe",
+                side_effect=subscribe,
+            ),
+            patch(
+                "custom_components.zigporter.websocket_api.mqtt.async_publish",
+                side_effect=publish,
+            ),
+        ):
+            yield subscribed, published
+
+    async def test_each_entry_scans_its_own_topic(
+        self, mock_hass, bridges, fake_mqtt, mock_connection
+    ):
+        subscribed, published = fake_mqtt
+
+        await ws_network_map(
+            mock_hass,
+            mock_connection,
+            {"id": 1, "type": "zigporter/network_map", "force_refresh": True, "entry_id": "b2"},
+        )
+
+        assert subscribed == ["zigbee2mqtt/b2/bridge/response/networkmap"]
+        assert published == ["zigbee2mqtt/b2/bridge/request/networkmap"]
+        result = mock_connection.send_result.call_args[0][1]
+        assert result["device_count"] == 3
+        assert result["mqtt_topic"] == "zigbee2mqtt/b2"
+
+    async def test_caches_are_independent(self, mock_hass, bridges, fake_mqtt, mock_connection):
+        for request_id, entry_id in enumerate(("b1", "b2"), start=1):
+            await ws_network_map(
+                mock_hass,
+                mock_connection,
+                {
+                    "id": request_id,
+                    "type": "zigporter/network_map",
+                    "force_refresh": True,
+                    "entry_id": entry_id,
+                },
+            )
+
+        assert mock_hass.data[DOMAIN]["b1"]["cache"]["device_count"] == 2
+        assert mock_hass.data[DOMAIN]["b2"]["cache"]["device_count"] == 3
+
+        mock_connection.send_result.reset_mock()
+        await ws_network_map(
+            mock_hass,
+            mock_connection,
+            {"id": 3, "type": "zigporter/network_map", "force_refresh": False, "entry_id": "b1"},
+        )
+        assert mock_connection.send_result.call_args[0][1]["device_count"] == 2
+
+    async def test_without_entry_id_uses_first_entry(
+        self, mock_hass, bridges, fake_mqtt, mock_connection
+    ):
+        subscribed, _ = fake_mqtt
+
+        await ws_network_map(
+            mock_hass,
+            mock_connection,
+            {"id": 1, "type": "zigporter/network_map", "force_refresh": True},
+        )
+
+        assert subscribed == ["zigbee2mqtt/b1/bridge/response/networkmap"]
+
+    async def test_unknown_entry_id_is_not_configured(self, mock_hass, bridges, mock_connection):
+        await ws_network_map(
+            mock_hass,
+            mock_connection,
+            {"id": 1, "type": "zigporter/network_map", "force_refresh": False, "entry_id": "nope"},
+        )
+
+        mock_connection.send_error.assert_called_once_with(
+            1, "not_configured", "Zigporter is not configured"
+        )
+
+    async def test_scan_status_is_per_entry(self, mock_hass, bridges, mock_connection):
+        task = asyncio.ensure_future(asyncio.sleep(100))
+        mock_hass.data[DOMAIN]["b1"]["scan_task"] = task
+        mock_hass.data[DOMAIN]["b1"]["scan_start_utc"] = "2026-01-01T12:00:00+00:00"
+
+        await ws_scan_status(
+            mock_hass, mock_connection, {"id": 1, "type": "zigporter/scan_status", "entry_id": "b1"}
+        )
+        await ws_scan_status(
+            mock_hass, mock_connection, {"id": 2, "type": "zigporter/scan_status", "entry_id": "b2"}
+        )
+        task.cancel()
+
+        assert mock_connection.send_result.call_args_list[0][0][1]["scanning"] is True
+        assert mock_connection.send_result.call_args_list[1][0][1] == {"scanning": False}
+
+    async def test_history_uses_entry_cache_path(self, mock_hass, bridges, mock_connection):
+        mock_hass.data[DOMAIN]["b2"]["cache_path"] = "/config/zigporter/b2/cache.json"
+        mock_hass.async_add_executor_job = AsyncMock(return_value=[])
+
+        await ws_history_list(
+            mock_hass,
+            mock_connection,
+            {"id": 1, "type": "zigporter/history_list", "entry_id": "b2"},
+        )
+
+        mock_hass.async_add_executor_job.assert_awaited_once_with(
+            _list_history, "/config/zigporter/b2/cache.json"
+        )
+
+    async def test_history_unknown_entry_id_is_empty(self, mock_hass, bridges, mock_connection):
+        await ws_history_list(
+            mock_hass,
+            mock_connection,
+            {"id": 1, "type": "zigporter/history_list", "entry_id": "nope"},
+        )
+
+        mock_connection.send_result.assert_called_once_with(1, {"snapshots": []})
