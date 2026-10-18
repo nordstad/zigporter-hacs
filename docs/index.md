@@ -31,6 +31,8 @@ Supports both **Zigbee2MQTT** and **ZHA** backends.
 - **Disk-cached** — scan results persisted across restarts, manual refresh only
 - **Dual backend** — switch between Zigbee2MQTT and ZHA without reinstalling
 
+Want to try new features early? See [Beta testing](guide/beta-testing.md).
+
 ## Quick start
 
 1. [Install via HACS](getting-started/installation.md)

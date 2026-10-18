@@ -137,6 +137,7 @@ Zigporter was featured by [BeardedTinker](https://www.youtube.com/@BeardedTinker
 
 ## Support
 
+- Want to try new features early? See [Beta testing](https://nordstad.github.io/zigporter-hacs/guide/beta-testing/).
 - Something not working? Check [Troubleshooting](https://nordstad.github.io/zigporter-hacs/troubleshooting/), then [open an issue](https://github.com/nordstad/zigporter-hacs/issues).
 - Enjoying Zigporter? You can support development on Ko-fi.
 
