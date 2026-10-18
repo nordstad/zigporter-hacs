@@ -38,6 +38,38 @@ from .const import (
 _HEX_COLOR_RE = re.compile(r"^#?[0-9A-Fa-f]{6}$")
 
 
+def _normalize_topic(topic: str | None) -> str:
+    """Strip whitespace and surrounding slashes from an MQTT topic prefix."""
+    return (topic or "").strip().strip("/") or DEFAULT_MQTT_TOPIC
+
+
+def _entry_identity(entry: ConfigEntry) -> tuple[str | None, str | None]:
+    """Return the (backend, topic) an entry currently uses. ZHA has no topic."""
+    backend = entry.options.get(CONF_BACKEND, entry.data.get(CONF_BACKEND))
+    if backend != BACKEND_Z2M:
+        return backend, None
+    topic = entry.options.get(CONF_MQTT_TOPIC, entry.data.get(CONF_MQTT_TOPIC))
+    return backend, _normalize_topic(topic)
+
+
+def _find_conflict(
+    entries: list[ConfigEntry],
+    backend: str,
+    topic: str | None,
+    exclude_entry_id: str | None = None,
+) -> str | None:
+    """Return an error key if another entry already uses this backend/topic."""
+    for entry in entries:
+        if entry.entry_id == exclude_entry_id:
+            continue
+        other_backend, other_topic = _entry_identity(entry)
+        if backend == BACKEND_ZHA and other_backend == BACKEND_ZHA:
+            return "zha_already_configured"
+        if backend == BACKEND_Z2M and other_backend == BACKEND_Z2M and other_topic == topic:
+            return "topic_already_configured"
+    return None
+
+
 class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Zigporter."""
 
@@ -45,19 +77,30 @@ class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial configuration step."""
-        await self.async_set_unique_id(DOMAIN)
-        self._abort_if_unique_id_configured()
-
         errors: dict[str, str] = {}
 
         if user_input is not None:
             backend = user_input[CONF_BACKEND]
+            topic = _normalize_topic(user_input.get(CONF_MQTT_TOPIC))
+            existing = self._async_current_entries()
             if backend == BACKEND_Z2M and not self.hass.config_entries.async_entries("mqtt"):
                 errors["base"] = "mqtt_not_configured"
             elif backend == BACKEND_ZHA and not self.hass.config_entries.async_entries("zha"):
                 errors["base"] = "zha_not_configured"
+            elif conflict := _find_conflict(existing, backend, topic):
+                errors["base"] = conflict
             else:
-                return self.async_create_entry(title="Zigporter", data=user_input)
+                if backend == BACKEND_ZHA:
+                    unique_id, title = "zha", "Zigporter (ZHA)"
+                else:
+                    unique_id, title = f"z2m:{topic}", f"Zigporter ({topic})"
+                if not existing:
+                    title = "Zigporter"
+                await self.async_set_unique_id(unique_id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=title, data={**user_input, CONF_MQTT_TOPIC: topic}
+                )
 
         schema = vol.Schema(
             {
@@ -98,7 +141,15 @@ class ZigporterOptionsFlow(OptionsFlow):
                 errors["base"] = "incomplete_palette"
             elif any(c and not _HEX_COLOR_RE.match(c) for c in filled):
                 errors["base"] = "invalid_color"
+            elif conflict := _find_conflict(
+                self.hass.config_entries.async_entries(DOMAIN),
+                user_input[CONF_BACKEND],
+                _normalize_topic(user_input.get(CONF_MQTT_TOPIC)),
+                exclude_entry_id=self.config_entry.entry_id,
+            ):
+                errors["base"] = conflict
             else:
+                user_input[CONF_MQTT_TOPIC] = _normalize_topic(user_input.get(CONF_MQTT_TOPIC))
                 for key in (CONF_HOP_COLOR_1, CONF_HOP_COLOR_2, CONF_HOP_COLOR_3, CONF_HOP_COLOR_4):
                     val = user_input.get(key, "").strip()
                     if val and not val.startswith("#"):

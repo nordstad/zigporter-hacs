@@ -16,10 +16,12 @@
     },
     "error": {
       "mqtt_not_configured": "MQTT integration is not set up. Zigbee2MQTT requires MQTT.",
-      "zha_not_configured": "ZHA integration is not set up."
+      "zha_not_configured": "ZHA integration is not set up.",
+      "topic_already_configured": "A Zigporter entry for this MQTT topic prefix already exists.",
+      "zha_already_configured": "ZHA is already configured in Zigporter. Only one ZHA entry is supported."
     },
     "abort": {
-      "already_configured": "Zigporter is already configured."
+      "already_configured": "This Zigporter setup is already configured."
     }
   },
   "options": {
@@ -56,7 +58,9 @@
     },
     "error": {
       "incomplete_palette": "All 4 hop colors must be set, or leave all empty for defaults.",
-      "invalid_color": "Invalid color format. Use #RRGGBB (e.g. #FF8800)."
+      "invalid_color": "Invalid color format. Use #RRGGBB (e.g. #FF8800).",
+      "topic_already_configured": "A Zigporter entry for this MQTT topic prefix already exists.",
+      "zha_already_configured": "ZHA is already configured in Zigporter. Only one ZHA entry is supported."
     }
   }
 }
