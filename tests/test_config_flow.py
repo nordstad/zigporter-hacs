@@ -419,6 +419,44 @@ class TestOptionsFlowConflicts:
 
         assert result["type"] == "create_entry"
 
+    async def test_topic_change_updates_unique_id(self):
+        two = _entry("b", topic="zigbee2mqtt/b2")
+        two.unique_id = "z2m:zigbee2mqtt/b2"
+        flow = _options_flow(two, [two])
+
+        await flow.async_step_init({CONF_BACKEND: BACKEND_Z2M, CONF_MQTT_TOPIC: "zigbee2mqtt/b9"})
+
+        flow.hass.config_entries.async_update_entry.assert_called_once_with(
+            two, unique_id="z2m:zigbee2mqtt/b9"
+        )
+
+    async def test_backend_change_updates_unique_id(self):
+        two = _entry("b", topic="zigbee2mqtt/b2")
+        two.unique_id = "z2m:zigbee2mqtt/b2"
+        flow = _options_flow(two, [two])
+
+        await flow.async_step_init({CONF_BACKEND: BACKEND_ZHA})
+
+        flow.hass.config_entries.async_update_entry.assert_called_once_with(two, unique_id="zha")
+
+    async def test_unchanged_topic_leaves_unique_id(self):
+        two = _entry("b", topic="zigbee2mqtt/b2")
+        two.unique_id = "z2m:zigbee2mqtt/b2"
+        flow = _options_flow(two, [two])
+
+        await flow.async_step_init({CONF_BACKEND: BACKEND_Z2M, CONF_MQTT_TOPIC: "zigbee2mqtt/b2"})
+
+        flow.hass.config_entries.async_update_entry.assert_not_called()
+
+    async def test_original_entry_unique_id_is_never_changed(self):
+        original = _entry("a", topic="zigbee2mqtt")
+        original.unique_id = DOMAIN
+        flow = _options_flow(original, [original])
+
+        await flow.async_step_init({CONF_BACKEND: BACKEND_Z2M, CONF_MQTT_TOPIC: "zigbee2mqtt/b9"})
+
+        flow.hass.config_entries.async_update_entry.assert_not_called()
+
     async def test_color_errors_still_reported(self):
         one = _entry("a")
         flow = _options_flow(one, [one])

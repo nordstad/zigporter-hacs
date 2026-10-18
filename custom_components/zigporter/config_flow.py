@@ -43,6 +43,11 @@ def _normalize_topic(topic: str | None) -> str:
     return (topic or "").strip().strip("/") or DEFAULT_MQTT_TOPIC
 
 
+def _unique_id(backend: str, topic: str) -> str:
+    """Build the unique id for a new entry. ZHA is a singleton; Z2M is keyed by topic."""
+    return "zha" if backend == BACKEND_ZHA else f"z2m:{topic}"
+
+
 def _entry_identity(entry: ConfigEntry) -> tuple[str | None, str | None]:
     """Return the (backend, topic) an entry currently uses. ZHA has no topic."""
     backend = entry.options.get(CONF_BACKEND, entry.data.get(CONF_BACKEND))
@@ -90,13 +95,10 @@ class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
             elif conflict := _find_conflict(existing, backend, topic):
                 errors["base"] = conflict
             else:
-                if backend == BACKEND_ZHA:
-                    unique_id, title = "zha", "Zigporter (ZHA)"
-                else:
-                    unique_id, title = f"z2m:{topic}", f"Zigporter ({topic})"
+                title = "Zigporter (ZHA)" if backend == BACKEND_ZHA else f"Zigporter ({topic})"
                 if not existing:
                     title = "Zigporter"
-                await self.async_set_unique_id(unique_id)
+                await self.async_set_unique_id(_unique_id(backend, topic))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=title, data={**user_input, CONF_MQTT_TOPIC: topic}
@@ -149,7 +151,19 @@ class ZigporterOptionsFlow(OptionsFlow):
             ):
                 errors["base"] = conflict
             else:
-                user_input[CONF_MQTT_TOPIC] = _normalize_topic(user_input.get(CONF_MQTT_TOPIC))
+                topic = _normalize_topic(user_input.get(CONF_MQTT_TOPIC))
+                user_input[CONF_MQTT_TOPIC] = topic
+                # Keep unique ids in sync with what an entry uses, so a freed topic can be
+                # reused. The original entry (unique id == DOMAIN) is never changed: its
+                # cache location depends on it.
+                new_unique_id = _unique_id(user_input[CONF_BACKEND], topic)
+                if (
+                    self.config_entry.unique_id != DOMAIN
+                    and self.config_entry.unique_id != new_unique_id
+                ):
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry, unique_id=new_unique_id
+                    )
                 for key in (CONF_HOP_COLOR_1, CONF_HOP_COLOR_2, CONF_HOP_COLOR_3, CONF_HOP_COLOR_4):
                     val = user_input.get(key, "").strip()
                     if val and not val.startswith("#"):
