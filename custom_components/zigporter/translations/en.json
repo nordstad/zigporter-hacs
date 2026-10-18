@@ -52,7 +52,7 @@
           "hop_color_2": "Background color for the second hop ring (RRGGBB or #RRGGBB). Set all 4 or leave all empty for defaults.",
           "hop_color_3": "Background color for the third hop ring (RRGGBB or #RRGGBB). Set all 4 or leave all empty for defaults.",
           "hop_color_4": "Background color for the fourth hop ring (RRGGBB or #RRGGBB). Set all 4 or leave all empty for defaults.",
-          "hop_opacity": "Opacity of hop ring fills (0.1–1.0). Default: 0.80."
+          "hop_opacity": "Opacity of hop ring fills (0.1–1.0). Default: 0.90."
         }
       }
     },
