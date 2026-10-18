@@ -11,15 +11,13 @@ Create a Home Assistant backup (**Settings → System → Backups**). Going back
 
 ## Get beta releases
 
-The **Pre-release** switch is provided by HACS (or the Marketplace in Home Assistant 2026.11 and newer), not by Zigporter. It is disabled by default.
+The **Pre-release** switch is provided by HACS (or the Marketplace in Home Assistant 2026.11 and newer), not by Zigporter. It is **disabled by default**, so it does not appear on the device page until you enable it. Find it in the entity list instead:
 
-1. Open **Settings → Devices & Services** and find the **Zigporter** device:
-    - **HACS**: under the **HACS** integration.
-    - **Marketplace** (Home Assistant 2026.11+): under the **Marketplace** integration.
-2. Open the **Pre-release** entity (usually `switch.zigporter_pre_release`).
-3. If it is disabled, enable it from the entity settings (gear icon → **Enabled**).
+1. Open **Settings → Devices & Services → Entities**.
+2. Search for `pre-release` and find the switch that belongs to the **Zigporter** device (usually `switch.zigporter_pre_release`). If you cannot see it, enable the option to show disabled entities in the filter menu.
+3. Open it. If Home Assistant says it is disabled, enable it from the entity settings (gear icon → **Enabled**), then wait a moment for it to load.
 4. Turn the switch **on**.
-5. Wait for the update check, or trigger one, then install the Zigporter update from **Settings → Updates**. Beta versions look like `0.10.0b1`.
+5. Check for updates, then install the Zigporter update from **Settings → Updates**. Beta versions look like `0.10.0b1`. If no update shows up, trigger a check from the HACS (or Marketplace) update entity for Zigporter.
 6. Restart Home Assistant and refresh your browser (F5).
 
 ## Report problems
