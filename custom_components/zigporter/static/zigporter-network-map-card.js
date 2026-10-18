@@ -293,6 +293,31 @@ class ZigporterNetworkMapCard extends LitElement {
     return { title: "Zigbee Network Map", show_stats: true };
   }
 
+  static getConfigForm() {
+    const labels = {
+      title: "Title",
+      show_stats: "Show stats",
+      entry_id: "Zigporter entry",
+    };
+    const helpers = {
+      title: "Defaults to the entry name when an entry is selected.",
+      entry_id:
+        "Which Zigbee2MQTT bridge or ZHA setup to show. Leave empty for the original entry.",
+    };
+    return {
+      schema: [
+        { name: "title", selector: { text: {} } },
+        { name: "show_stats", default: true, selector: { boolean: {} } },
+        {
+          name: "entry_id",
+          selector: { config_entry: { integration: "zigporter" } },
+        },
+      ],
+      computeLabel: (schema) => labels[schema.name],
+      computeHelper: (schema) => helpers[schema.name],
+    };
+  }
+
   constructor() {
     super();
     this._loading = false;
@@ -322,6 +347,7 @@ class ZigporterNetworkMapCard extends LitElement {
     this._historyOpen = false;
     this._historyList = [];
     this._historySnapshot = null;
+    this._entryTitle = null;
 
     this._boundOnWheel = (e) => this._onWheel(e);
     this._boundOnPointerDown = (e) => this._onPointerDown(e);
@@ -333,7 +359,29 @@ class ZigporterNetworkMapCard extends LitElement {
     this._config = {
       title: (config && config.title) || "Zigbee Network Map",
       show_stats: !config || config.show_stats !== false,
+      entry_id: (config && config.entry_id) || null,
+      custom_title: !!(config && config.title),
     };
+  }
+
+  _callWS(msg) {
+    const entryId = this._config.entry_id;
+    return this._hass.callWS(entryId ? { ...msg, entry_id: entryId } : msg);
+  }
+
+  // Cards without entry_id look exactly as before; the entry name and topic
+  // only show for cards that explicitly select an entry.
+  _headerTitle() {
+    const c = this._config;
+    if (c.custom_title || !c.entry_id || !this._entryTitle) return c.title;
+    return this._entryTitle;
+  }
+
+  _backendLabel(result) {
+    const label = result.backend === "zha" ? "ZHA" : "Z2M";
+    return this._config.entry_id && result.mqtt_topic
+      ? `${label} · ${result.mqtt_topic}`
+      : label;
   }
 
   set hass(hass) {
@@ -425,7 +473,7 @@ class ZigporterNetworkMapCard extends LitElement {
                 @keydown=${this._onSearchKeydown}
                 @blur=${this._onSearchBlur}
               />`
-            : html`<h2>${this._config.title}</h2>`
+            : html`<h2>${this._headerTitle()}</h2>`
         }
         <div class="btn-group">
           <div class="btn-row">
@@ -655,7 +703,7 @@ class ZigporterNetworkMapCard extends LitElement {
     let timerOffset = 0;
     if (!forceRefresh) {
       try {
-        const status = await this._hass.callWS({
+        const status = await this._callWS({
           type: "zigporter/scan_status",
         });
         if (status.scanning && status.scan_start_utc) {
@@ -677,7 +725,7 @@ class ZigporterNetworkMapCard extends LitElement {
     }, 1000);
 
     try {
-      const result = await this._hass.callWS({
+      const result = await this._callWS({
         type: "zigporter/network_map",
         force_refresh: forceRefresh,
       });
@@ -693,6 +741,7 @@ class ZigporterNetworkMapCard extends LitElement {
       }
 
       this._svgContent = svgString;
+      this._entryTitle = result.entry_title || null;
       this._loading = false;
 
       if (this._config.show_stats) {
@@ -700,7 +749,7 @@ class ZigporterNetworkMapCard extends LitElement {
           result.scan_duration_ms < 1000
             ? result.scan_duration_ms + "ms"
             : (result.scan_duration_ms / 1000).toFixed(1) + "s";
-        const backendLabel = result.backend === "zha" ? "ZHA" : "Z2M";
+        const backendLabel = this._backendLabel(result);
         let stats = `${backendLabel} · ${result.device_count} devices · ${result.max_depth} hops · ${duration}`;
         if (result.scan_timestamp) {
           stats += ` · Scanned ${new Date(result.scan_timestamp).toLocaleString()}`;
@@ -771,7 +820,7 @@ class ZigporterNetworkMapCard extends LitElement {
     if (!this._historyOpen || !this._hass) return;
 
     try {
-      const { snapshots } = await this._hass.callWS({
+      const { snapshots } = await this._callWS({
         type: "zigporter/history_list",
       });
       this._historyList = snapshots || [];
@@ -787,7 +836,7 @@ class ZigporterNetworkMapCard extends LitElement {
     this._error = null;
 
     try {
-      const result = await this._hass.callWS({
+      const result = await this._callWS({
         type: "zigporter/history_get",
         snapshot_id: snapshotId,
       });
@@ -803,7 +852,7 @@ class ZigporterNetworkMapCard extends LitElement {
       this._loading = false;
 
       if (this._config.show_stats) {
-        const backendLabel = result.backend === "zha" ? "ZHA" : "Z2M";
+        const backendLabel = this._backendLabel(result);
         this._stats = `${backendLabel} · ${result.device_count} devices · ${result.max_depth} hops`;
       }
     } catch (err) {

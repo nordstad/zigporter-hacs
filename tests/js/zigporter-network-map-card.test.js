@@ -2171,4 +2171,150 @@ describe("ZigporterNetworkMapCard", () => {
       );
     });
   });
+  describe("multiple entries (entry_id)", () => {
+    const MAP = {
+      svg: VALID_SVG,
+      device_count: 7,
+      max_depth: 2,
+      scan_duration_ms: 500,
+      backend: "z2m",
+      mqtt_topic: "zigbee2mqtt/b2",
+      entry_title: "Building 2",
+    };
+
+    async function createCard(config, handler) {
+      const calls = [];
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig(config);
+      await el.updateComplete;
+      el.hass = mockHass((msg) => {
+        calls.push(msg);
+        if (handler) return handler(msg);
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve(MAP);
+      });
+      await aTimeout(50);
+      await el.updateComplete;
+      return { el, calls };
+    }
+
+    it("sends entry_id with every websocket call when configured", async () => {
+      const { el, calls } = await createCard({ entry_id: "abc" });
+      await el._toggleHistory();
+      await el._selectHistorySnapshot("1");
+
+      const types = calls.map((c) => c.type);
+      expect(types).to.include.members([
+        "zigporter/scan_status",
+        "zigporter/network_map",
+        "zigporter/history_list",
+        "zigporter/history_get",
+      ]);
+      expect(calls.every((c) => c.entry_id === "abc")).to.be.true;
+    });
+
+    it("does not send entry_id when not configured", async () => {
+      const { calls } = await createCard({});
+      expect(calls.length).to.be.greaterThan(0);
+      expect(calls.some((c) => "entry_id" in c)).to.be.false;
+    });
+
+    it("uses the entry name as title when an entry is selected", async () => {
+      const { el } = await createCard({ entry_id: "abc" });
+      expect(el.renderRoot.querySelector("h2").textContent).to.equal(
+        "Building 2",
+      );
+    });
+
+    it("prefers a custom title over the entry name", async () => {
+      const { el } = await createCard({ entry_id: "abc", title: "B2" });
+      expect(el.renderRoot.querySelector("h2").textContent).to.equal("B2");
+    });
+
+    it("keeps the default title when the entry name is missing", async () => {
+      const { el } = await createCard({ entry_id: "abc" }, (msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({ ...MAP, entry_title: undefined });
+      });
+      expect(el.renderRoot.querySelector("h2").textContent).to.equal(
+        "Zigbee Network Map",
+      );
+    });
+
+    it("does not change the title or stats of cards without entry_id", async () => {
+      const { el } = await createCard({});
+      expect(el.renderRoot.querySelector("h2").textContent).to.equal(
+        "Zigbee Network Map",
+      );
+      const stats = el.renderRoot.querySelector(".stats").textContent;
+      expect(stats).to.include("Z2M · 7 devices");
+      expect(stats).to.not.include("zigbee2mqtt/b2");
+    });
+
+    it("shows the topic in the stats when an entry is selected", async () => {
+      const { el } = await createCard({ entry_id: "abc" });
+      expect(el.renderRoot.querySelector(".stats").textContent).to.include(
+        "Z2M · zigbee2mqtt/b2 · 7 devices",
+      );
+    });
+
+    it("shows no topic for ZHA entries", async () => {
+      const { el } = await createCard({ entry_id: "abc" }, (msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({ ...MAP, backend: "zha", mqtt_topic: null });
+      });
+      expect(el.renderRoot.querySelector(".stats").textContent).to.include(
+        "ZHA · 7 devices",
+      );
+    });
+
+    it("shows the topic when viewing a history snapshot", async () => {
+      const { el } = await createCard({ entry_id: "abc" }, (msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve(MAP);
+      });
+      await el._selectHistorySnapshot("1");
+      expect(el._stats).to.include("Z2M · zigbee2mqtt/b2 · 7 devices");
+    });
+
+    it("keeps two cards independent", async () => {
+      const a = await createCard({ entry_id: "a" });
+      const b = await createCard({ entry_id: "b" });
+      expect(a.calls.every((c) => c.entry_id === "a")).to.be.true;
+      expect(b.calls.every((c) => c.entry_id === "b")).to.be.true;
+    });
+  });
+
+  describe("getConfigForm", () => {
+    const form = customElements
+      .get("zigporter-network-map-card")
+      .getConfigForm();
+
+    it("offers title, show_stats and a Zigporter entry picker", () => {
+      const names = form.schema.map((f) => f.name);
+      expect(names).to.deep.equal(["title", "show_stats", "entry_id"]);
+      const entry = form.schema.find((f) => f.name === "entry_id");
+      expect(entry.selector.config_entry.integration).to.equal("zigporter");
+      expect(entry.required).to.not.be.true;
+    });
+
+    it("defaults show_stats to on", () => {
+      expect(form.schema.find((f) => f.name === "show_stats").default).to.be
+        .true;
+    });
+
+    it("provides labels and helper text", () => {
+      expect(form.computeLabel({ name: "entry_id" })).to.equal(
+        "Zigporter entry",
+      );
+      expect(form.computeHelper({ name: "entry_id" })).to.include("original");
+      expect(form.computeHelper({ name: "show_stats" })).to.equal(undefined);
+    });
+  });
 });
