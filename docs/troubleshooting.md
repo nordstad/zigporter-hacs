@@ -29,6 +29,18 @@ The card JavaScript is registered when the integration loads, but the browser ne
 
 **Fix:** Use a normal refresh (`F5` / `Cmd+R`) instead of hard refresh. If you've already hard-refreshed, a second normal refresh will resolve it.
 
+### Card shows the wrong bridge
+
+A card without `entry_id` always shows your original Zigporter entry. Open the card editor and choose the bridge under **Zigporter entry**.
+
+### "A Zigporter entry for this MQTT topic prefix already exists"
+
+Each Zigbee2MQTT topic prefix can be used by one entry. Use a different prefix for the new bridge, or change or remove the existing entry first. Trailing slashes and spaces are ignored.
+
+### "ZHA is already configured in Zigporter"
+
+Home Assistant supports one ZHA setup, so Zigporter allows one ZHA entry. Edit the existing ZHA entry instead of adding another.
+
 ### Scan times out
 
 Large Zigbee networks (50+ devices) can take several minutes to scan. The Z2M coordinator queries each device sequentially.

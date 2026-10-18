@@ -52,6 +52,11 @@ Or manually:
 1. **Settings → Devices & Services → Add Integration** → search "Zigporter".
 2. Select your Zigbee backend (**Zigbee2MQTT** or **ZHA**).
 3. If using Zigbee2MQTT, confirm the MQTT topic prefix (default: `zigbee2mqtt`).
+4. Optionally enter a **Name** (for example "Building 1") used as the entry name and default card title.
+
+### Multiple bridges
+
+Running several Zigbee2MQTT instances on one broker? Add one Zigporter entry per topic prefix (**Add entry** on the integration page), then add one card per bridge with its own Panel view. A ZHA entry can exist alongside Z2M entries; each topic can be used once, and only one ZHA entry is possible. Existing setups are unaffected. See the [configuration guide](https://nordstad.github.io/zigporter-hacs/getting-started/configuration/#multiple-bridges).
 
 ### Options
 
@@ -100,6 +105,7 @@ The map will appear empty until you click **Scan** to request the first network 
 |--------|---------|-------------|
 | `title` | Zigbee Network Map | Card header text |
 | `show_stats` | `true` | Show device count, hops, and scan duration |
+| `entry_id` | *(original entry)* | Which Zigporter entry (bridge) the card shows. Pick it in the card editor. Cards without it show your original entry |
 
 ## How it works
 

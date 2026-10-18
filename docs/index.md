@@ -30,6 +30,7 @@ Supports both **Zigbee2MQTT** and **ZHA** backends.
 - **Configurable colors** — custom hop ring colors and opacity
 - **Disk-cached** — scan results persisted across restarts, manual refresh only
 - **Dual backend** — switch between Zigbee2MQTT and ZHA without reinstalling
+- **Multiple bridges** — one entry and card per Zigbee2MQTT topic prefix, plus ZHA alongside
 
 Want to try new features early? See [Beta testing](guide/beta-testing.md).
 

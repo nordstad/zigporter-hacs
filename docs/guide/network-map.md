@@ -36,6 +36,10 @@ Reads device list and neighbor tables from the ZHA gateway. ZHA maps may lack ro
 
 For ZHA battery devices with LQI=0, Zigporter uses the device's `last_seen` timestamp: if the device communicated within the last 2 hours, the badge shows relative time (e.g. "2m", "1h") in green to indicate the device is alive but signal strength is unmeasurable.
 
+## Multiple networks
+
+Each Zigporter entry (one per Zigbee2MQTT topic, plus at most one ZHA) has its own map, cache and scan history, and is shown by its own card. See [Multiple bridges](../getting-started/configuration.md#multiple-bridges).
+
 ## Interactions
 
 - **Pan** — click and drag the map; on a trackpad, two-finger scroll pans (small delta values are treated as pan, not zoom)
