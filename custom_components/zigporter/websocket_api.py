@@ -364,10 +364,16 @@ def _read_history_snapshot(cache_path: str, snapshot_id: str) -> dict[str, Any] 
 
 
 def _get_config_entry(hass: HomeAssistant, entry_id: str | None = None):
-    """Get a Zigporter config entry by id, or the first one when no id is given."""
+    """Get a Zigporter config entry by id.
+
+    Without an id (cards created before multi-bridge support) the original entry
+    (unique id == DOMAIN) is preferred, so existing cards keep showing the same
+    bridge after more entries are added. Otherwise the first entry is used.
+    """
     entries = hass.config_entries.async_entries(DOMAIN)
     if entry_id is None:
-        return entries[0] if entries else None
+        legacy = next((entry for entry in entries if entry.unique_id == DOMAIN), None)
+        return legacy or (entries[0] if entries else None)
     return next((entry for entry in entries if entry.entry_id == entry_id), None)
 
 

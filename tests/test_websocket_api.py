@@ -97,6 +97,12 @@ class TestGetConfigEntryById:
         mock_hass.config_entries.async_entries = MagicMock(return_value=[first])
         assert _get_config_entry(mock_hass, "missing") is None
 
+    def test_no_id_prefers_original_entry_over_order(self, mock_hass):
+        newer = MagicMock(entry_id="a", unique_id="z2m:zigbee2mqtt/b2")
+        original = MagicMock(entry_id="b", unique_id=DOMAIN)
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[newer, original])
+        assert _get_config_entry(mock_hass) is original
+
     def test_no_id_still_returns_first(self, mock_hass):
         first, second = MagicMock(entry_id="a"), MagicMock(entry_id="b")
         mock_hass.config_entries.async_entries = MagicMock(return_value=[first, second])
