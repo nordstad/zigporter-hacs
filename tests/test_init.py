@@ -184,3 +184,74 @@ class TestAsyncRemoveEntry:
         await async_remove_entry(mock_hass, mock_entry)
 
         mock_hass.async_add_executor_job.assert_not_awaited()
+
+
+class TestDeviceLqiTracker:
+    @pytest.fixture
+    def z2m_entry(self, mock_entry):
+        mock_entry.options = {"backend": "zigbee2mqtt", "mqtt_topic": "zigbee2mqtt_acreage"}
+        mock_entry.async_create_background_task = MagicMock(
+            side_effect=lambda hass, coro, name: coro.close()
+        )
+        return mock_entry
+
+    async def test_setup_starts_tracker_for_z2m(self, mock_hass, z2m_entry):
+        mock_hass.async_add_executor_job = AsyncMock(return_value=False)
+        with patch(
+            "custom_components.zigporter.Z2MDeviceLqiTracker.async_load", new_callable=AsyncMock
+        ) as load:
+            await async_setup_entry(mock_hass, z2m_entry)
+
+        tracker = mock_hass.data[DOMAIN][z2m_entry.entry_id]["lqi_tracker"]
+        assert tracker.topic_prefix == "zigbee2mqtt_acreage"
+        assert tracker._store_path == "/config/zigporter/test_entry_123/device_lqi.json"
+        load.assert_awaited_once()
+        z2m_entry.async_create_background_task.assert_called_once()
+
+    async def test_setup_skips_tracker_for_zha(self, mock_hass, mock_entry):
+        mock_entry.options = {"backend": "zha"}
+        mock_hass.async_add_executor_job = AsyncMock(return_value=False)
+        await async_setup_entry(mock_hass, mock_entry)
+        assert "lqi_tracker" not in mock_hass.data[DOMAIN][mock_entry.entry_id]
+
+    async def test_unload_stops_tracker(self, mock_hass, mock_entry):
+        tracker = MagicMock()
+        mock_hass.data = {DOMAIN: {mock_entry.entry_id: {"lqi_tracker": tracker}}}
+        await async_unload_entry(mock_hass, mock_entry)
+        tracker.async_stop.assert_called_once()
+
+    async def test_options_update_keeps_tracker_on_same_topic(self, mock_hass, z2m_entry):
+        tracker = MagicMock()
+        tracker.topic_prefix = "zigbee2mqtt_acreage"
+        mock_hass.data = {DOMAIN: {z2m_entry.entry_id: {"lqi_tracker": tracker}}}
+        await _async_options_updated(mock_hass, z2m_entry)
+        tracker.async_stop.assert_not_called()
+        assert mock_hass.data[DOMAIN][z2m_entry.entry_id]["lqi_tracker"] is tracker
+
+    async def test_options_update_restarts_tracker_on_new_topic(self, mock_hass, z2m_entry):
+        old = MagicMock()
+        old.topic_prefix = "zigbee2mqtt"
+        mock_hass.data = {
+            DOMAIN: {
+                z2m_entry.entry_id: {
+                    "lqi_tracker": old,
+                    "cache_path": "/config/zigporter/test_entry_123/network_map_cache.json",
+                }
+            }
+        }
+        with patch(
+            "custom_components.zigporter.Z2MDeviceLqiTracker.async_load", new_callable=AsyncMock
+        ):
+            await _async_options_updated(mock_hass, z2m_entry)
+        old.async_stop.assert_called_once()
+        new = mock_hass.data[DOMAIN][z2m_entry.entry_id]["lqi_tracker"]
+        assert new.topic_prefix == "zigbee2mqtt_acreage"
+
+    async def test_options_update_to_zha_stops_tracker(self, mock_hass, mock_entry):
+        mock_entry.options = {"backend": "zha"}
+        old = MagicMock()
+        old.topic_prefix = "zigbee2mqtt"
+        mock_hass.data = {DOMAIN: {mock_entry.entry_id: {"lqi_tracker": old}}}
+        await _async_options_updated(mock_hass, mock_entry)
+        old.async_stop.assert_called_once()
+        assert "lqi_tracker" not in mock_hass.data[DOMAIN][mock_entry.entry_id]

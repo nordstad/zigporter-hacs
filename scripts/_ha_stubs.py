@@ -29,6 +29,7 @@ def install() -> None:
     mqtt = ModuleType("homeassistant.components.mqtt")
     mqtt.async_subscribe = MagicMock()
     mqtt.async_publish = MagicMock()
+    mqtt.async_wait_for_mqtt_client = MagicMock()
 
     core = ModuleType("homeassistant.core")
     core.HomeAssistant = object

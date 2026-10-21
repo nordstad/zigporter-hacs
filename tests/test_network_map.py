@@ -1,7 +1,9 @@
 """Tests for network_map graph algorithms."""
 
 from custom_components.zigporter.network_map import (
+    _z2m_last_seen,
     _zha_lqi,
+    apply_z2m_device_lqi,
     build_flat_zha_topology,
     build_routing_tree,
     build_zha_topology_from_devices,
@@ -316,3 +318,106 @@ class TestBuildRoutingTreeEdgeCases:
         parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
         assert parent_map["0xdevice"] == "0xcoord"
         assert depth_map["0xdevice"] == 1
+
+
+def _z2m(nodes, links):
+    return {n["ieeeAddr"]: dict(n) for n in nodes}, [dict(link) for link in links]
+
+
+def _link(src, tgt, lqi, relationship=None):
+    link = {"source": {"ieeeAddr": src}, "target": {"ieeeAddr": tgt}, "lqi": lqi}
+    if relationship is not None:
+        link["relationship"] = relationship
+    return link
+
+
+COORD = {"ieeeAddr": "0xc", "friendlyName": "Coordinator", "type": "Coordinator"}
+PLUG = {"ieeeAddr": "0xr", "friendlyName": "Plug", "type": "Router"}
+DOOR = {"ieeeAddr": "0xe", "friendlyName": "Front Door", "type": "EndDevice"}
+
+
+class TestZ2mLastSeen:
+    def test_epoch_ms(self):
+        assert _z2m_last_seen(0) is None
+        assert _z2m_last_seen(1_700_000_000_000).startswith("2023-11-14T22:13:20")
+
+    def test_iso_string_passthrough(self):
+        assert _z2m_last_seen("2026-10-21T13:00:00Z") == "2026-10-21T13:00:00Z"
+
+    def test_invalid(self):
+        assert _z2m_last_seen(None) is None
+        assert _z2m_last_seen(True) is None
+        assert _z2m_last_seen("") is None
+        assert _z2m_last_seen([]) is None
+
+
+class TestApplyZ2mDeviceLqi:
+    def test_fills_zero_link_from_device_lqi(self):
+        nodes, links = _z2m(
+            [COORD, PLUG, DOOR],
+            [_link("0xr", "0xc", 200), _link("0xe", "0xr", 0, "Child")],
+        )
+        filled = apply_z2m_device_lqi(nodes, links, {"Front Door": 111})
+        assert filled == 1
+        assert links[1]["lqi"] == 111
+        assert links[1]["lqi_source"] == "device"
+        assert links[0]["lqi"] == 200
+        _, lqi_map, depth_map = build_routing_tree(nodes, links)
+        assert lqi_map["0xe"] == 111
+        assert depth_map["0xe"] == 2
+
+    def test_fills_reverse_direction_link(self):
+        nodes, links = _z2m([COORD, PLUG, DOOR], [_link("0xr", "0xe", 0)])
+        assert apply_z2m_device_lqi(nodes, links, {"Front Door": 80}) == 1
+        assert links[0]["lqi"] == 80
+
+    def test_keeps_reported_link_lqi(self):
+        nodes, links = _z2m([COORD, PLUG, DOOR], [_link("0xe", "0xr", 45)])
+        assert apply_z2m_device_lqi(nodes, links, {"Front Door": 111}) == 0
+        assert links[0]["lqi"] == 45
+
+    def test_does_not_touch_router_links(self):
+        nodes, links = _z2m([COORD, PLUG, DOOR], [_link("0xr", "0xc", 0)])
+        assert apply_z2m_device_lqi(nodes, links, {"Plug": 150, "Front Door": 60}) == 1
+        assert links[0]["lqi"] == 0  # router link untouched
+        assert links[1]["source"]["ieeeAddr"] == "0xe"  # orphan door linked to coordinator
+
+    def test_injects_link_for_orphaned_end_device(self):
+        nodes, links = _z2m([COORD, DOOR], [])
+        assert apply_z2m_device_lqi(nodes, links, {"Front Door": 70}) == 1
+        assert links == [
+            {
+                "source": {"ieeeAddr": "0xe"},
+                "target": {"ieeeAddr": "0xc"},
+                "lqi": 70,
+                "relationship": "Child",
+                "lqi_source": "device",
+            }
+        ]
+
+    def test_no_coordinator_no_injection(self):
+        nodes, links = _z2m([DOOR], [])
+        assert apply_z2m_device_lqi(nodes, links, {"Front Door": 70}) == 0
+        assert links == []
+
+    def test_unknown_device_leaves_zero(self):
+        nodes, links = _z2m([COORD, PLUG, DOOR], [_link("0xe", "0xr", 0)])
+        assert apply_z2m_device_lqi(nodes, links, {"Other": 90}) == 0
+        assert links[0]["lqi"] == 0
+
+    def test_zero_link_with_unknown_endpoints(self):
+        nodes, links = _z2m([COORD, DOOR], [_link("0xa", "0xb", 0)])
+        apply_z2m_device_lqi(nodes, links, {"Front Door": 90})
+        assert links[0]["lqi"] == 0
+
+    def test_copies_last_seen(self):
+        door = {**DOOR, "lastSeen": 1_700_000_000_000}
+        kept = {**PLUG, "lastSeen": 1_700_000_000_000, "last_seen": "keep"}
+        nodes, links = _z2m([COORD, kept, door], [])
+        assert apply_z2m_device_lqi(nodes, links, {}) == 0
+        assert nodes["0xe"]["last_seen"].startswith("2023-11-14")
+        assert nodes["0xr"]["last_seen"] == "keep"
+
+    def test_node_without_name(self):
+        nodes, links = _z2m([COORD, {"ieeeAddr": "0xn", "type": "EndDevice"}], [])
+        assert apply_z2m_device_lqi(nodes, links, {"Front Door": 90}) == 0

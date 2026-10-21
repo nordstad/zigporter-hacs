@@ -1,5 +1,6 @@
 """Graph algorithms for Zigbee network topology — ported from zigporter CLI."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 from .const import COORDINATOR_BONUS
@@ -131,6 +132,87 @@ def build_flat_zha_topology(
             )
 
     return nodes, links
+
+
+def _z2m_last_seen(raw: Any) -> str | None:
+    """Convert Zigbee2MQTT's `lastSeen` (epoch ms, or an ISO string) to ISO 8601."""
+    if isinstance(raw, bool) or raw is None:
+        return None
+    if isinstance(raw, int | float):
+        if raw <= 0:
+            return None
+        return datetime.fromtimestamp(raw / 1000, tz=UTC).isoformat()
+    if isinstance(raw, str) and raw:
+        return raw
+    return None
+
+
+def apply_z2m_device_lqi(
+    nodes: dict[str, dict[str, Any]],
+    links: list[dict[str, Any]],
+    device_lqi_by_name: dict[str, int],
+) -> int:
+    """Fill gaps in a Zigbee2MQTT topology with device-level data, in place.
+
+    - Copies Zigbee2MQTT's `lastSeen` into `last_seen`, which the renderer
+      already understands.
+    - Replaces a link LQI of 0 between an end device and its router with the
+      LQI the end device last reported, when known. Routers on older firmware
+      often leave LQI at 0 for the sleepy children in their neighbor table.
+    - Adds a link to the coordinator for an end device that no router lists,
+      mirroring the ZHA backend.
+
+    Returns the number of links whose LQI came from device-level data.
+    """
+    coordinator_ieee: str | None = None
+    device_lqi: dict[str, int] = {}
+    for ieee, node in nodes.items():
+        last_seen = _z2m_last_seen(node.get("lastSeen"))
+        if last_seen and not node.get("last_seen"):
+            node["last_seen"] = last_seen
+        if node.get("type") == "Coordinator":
+            coordinator_ieee = ieee
+        name = node.get("friendlyName")
+        lqi = device_lqi_by_name.get(name) if name else None
+        if lqi and lqi > 0:
+            device_lqi[ieee] = int(lqi)
+
+    if not device_lqi:
+        return 0
+
+    def _is_end_device(ieee: str) -> bool:
+        return nodes.get(ieee, {}).get("type") == "EndDevice"
+
+    filled = 0
+    linked: set[str] = set()
+    for link in links:
+        src = link.get("source", {}).get("ieeeAddr", "").lower()
+        tgt = link.get("target", {}).get("ieeeAddr", "").lower()
+        linked.update((src, tgt))
+        if link.get("lqi"):
+            continue
+        end_device = src if _is_end_device(src) else tgt if _is_end_device(tgt) else None
+        if end_device and end_device in device_lqi:
+            link["lqi"] = device_lqi[end_device]
+            link["lqi_source"] = "device"
+            filled += 1
+
+    if coordinator_ieee:
+        for ieee, lqi in device_lqi.items():
+            if ieee in linked or ieee == coordinator_ieee or not _is_end_device(ieee):
+                continue
+            links.append(
+                {
+                    "source": {"ieeeAddr": ieee},
+                    "target": {"ieeeAddr": coordinator_ieee},
+                    "lqi": lqi,
+                    "relationship": "Child",
+                    "lqi_source": "device",
+                }
+            )
+            filled += 1
+
+    return filled
 
 
 def _is_ancestor(candidate: str, of: str, parent_map: dict[str, str | None]) -> bool:
