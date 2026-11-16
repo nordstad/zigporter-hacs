@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@open-wc/testing": "^5.0.0",
-    "@web/test-runner": "^1.0.0",
+    "@web/test-runner": "^1.0.1",
     "@web/test-runner-playwright": "^1.0.0",
     "lit": "^3.0.0",
     "prettier": "3.10.1"
