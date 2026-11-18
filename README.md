@@ -1,21 +1,28 @@
-<h1><img src="https://raw.githubusercontent.com/nordstad/zigporter-hacs/main/custom_components/zigporter/brand/icon.png" alt="" width="40" align="absmiddle"> Zigporter</h1>
+<!-- markdownlint-disable MD033 -->
+<h1>
+  <img src="custom_components/zigporter/brand/icon.png" alt="" width="40" align="absmiddle">
+  Zigporter
+</h1>
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![GitHub Release](https://img.shields.io/github/v/release/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/releases)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.8%2B-blue)](https://www.home-assistant.io/)
 [![Validate](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml/badge.svg)](https://github.com/nordstad/zigporter-hacs/actions/workflows/validate.yml)
 [![Docs](https://img.shields.io/badge/docs-online-teal)](https://nordstad.github.io/zigporter-hacs/)
 [![License: MIT](https://img.shields.io/github/license/nordstad/zigporter-hacs)](https://github.com/nordstad/zigporter-hacs/blob/main/LICENSE)
 
-Zigbee network topology map for Home Assistant. Visualize your mesh network with LQI signal quality indicators, routing paths, and device hierarchy.
+Zigbee network topology map for Home Assistant. Visualize your mesh network with
+LQI signal quality indicators, routing paths, and device hierarchy.
 
 Supports both **Zigbee2MQTT** and **ZHA** backends.
 
 <p align="center">
   <img src="docs/assets/demo-network.svg" alt="Demo network map" width="700">
 </p>
+<!-- markdownlint-enable MD033 -->
 
-**[Documentation](https://nordstad.github.io/zigporter-hacs/)** · [Getting started](https://nordstad.github.io/zigporter-hacs/getting-started/installation/) · [Troubleshooting](https://nordstad.github.io/zigporter-hacs/troubleshooting/)
+**[Documentation](https://nordstad.github.io/zigporter-hacs/)** ·
+[Getting started](https://nordstad.github.io/zigporter-hacs/getting-started/installation/)
+· [Troubleshooting](https://nordstad.github.io/zigporter-hacs/troubleshooting/)
 
 ## Requirements
 
@@ -26,46 +33,73 @@ Supports both **Zigbee2MQTT** and **ZHA** backends.
 
 ## Installation
 
-### HACS (recommended)
+### Home Assistant Marketplace
 
-Zigporter is not yet in the HACS default store, so it is added as a custom repository. The button below does this for you:
+On Home Assistant 2026.11 or newer, install Zigporter through the Marketplace.
+Zigporter is not yet listed in the default catalog, so add it as a custom
+repository.
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=nordstad&repository=zigporter-hacs&category=integration)
+The button below opens Zigporter in the Marketplace and requires My Home
+Assistant to be configured:
 
-Or manually:
+[![Open Zigporter in the Home Assistant Marketplace or HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=nordstad&repository=zigporter-hacs&category=integration)
 
-1. Open HACS → three dots menu → **Custom repositories**.
-2. Add `nordstad/zigporter-hacs` with type **Integration**.
-3. Search for "Zigporter" and install.
+If the repository is not added automatically:
+
+1. Go to **Settings → Marketplace** and select **Custom repositories** from the
+   three-dot menu.
+2. Add `nordstad/zigporter-hacs` with the type **Integration**.
+
+Then find Zigporter in the Marketplace, install it, and restart Home Assistant.
+
+### HACS (older Home Assistant versions)
+
+On Home Assistant versions older than 2026.11, use HACS instead:
+
+1. Open HACS and select **Custom repositories** from the three-dot menu.
+2. Add `nordstad/zigporter-hacs` with the type **Integration**.
+3. Find Zigporter and install it.
 4. Restart Home Assistant.
 
 ### Manual
 
-Copy `custom_components/zigporter/` to your HA `config/custom_components/` directory and restart.
+Copy `custom_components/zigporter/` to your HA `config/custom_components/`
+directory and restart.
 
 ## Setup
 
 [![Add Integration to your Home Assistant instance.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=zigporter)
 
-Or manually:
+The button requires My Home Assistant to be configured.
 
-1. **Settings → Devices & Services → Add Integration** → search "Zigporter".
-2. Select your Zigbee backend (**Zigbee2MQTT** or **ZHA**).
-3. If using Zigbee2MQTT, confirm the MQTT topic prefix (default: `zigbee2mqtt`).
-4. Optionally enter a **Name** (for example "Building 1") used as the entry name and default card title.
+Alternatively, go to **Settings → Devices & Services → Add Integration** and
+search for Zigporter.
+
+Then:
+
+1. Select your Zigbee backend (**Zigbee2MQTT** or **ZHA**).
+2. If using Zigbee2MQTT, confirm the MQTT topic prefix (default: `zigbee2mqtt`).
+3. Optionally enter a **Name** (for example "Building 1") used as the entry name
+   and default card title.
 
 ### Multiple bridges
 
-Running several Zigbee2MQTT instances on one broker? Add one Zigporter entry per topic prefix (**Add entry** on the integration page), then add one card per bridge with its own Panel view. A ZHA entry can exist alongside Z2M entries; each topic can be used once, and only one ZHA entry is possible. Existing setups are unaffected. See the [configuration guide](https://nordstad.github.io/zigporter-hacs/getting-started/configuration/#multiple-bridges).
+Add one Zigporter entry per Zigbee2MQTT topic using **Add entry** on the
+integration page. You can also add one ZHA entry.
+
+Use a separate card and Panel view for each bridge.
+
+See the
+[configuration guide](https://nordstad.github.io/zigporter-hacs/getting-started/configuration/#multiple-bridges).
 
 ### Options
 
 Click **Configure** on the integration to adjust:
 
 | Option | Default | Description |
-|--------|---------|-------------|
-| Backend | *(from setup)* | Switch between Zigbee2MQTT and ZHA without reinstalling |
-| MQTT topic | `zigbee2mqtt` | Topic prefix for Z2M (only relevant when backend is Z2M) |
+| -------- | --------- | ------------- |
+| Backend | *(from setup)* | Switch between Z2M and ZHA without reinstalling |
+| MQTT topic | `zigbee2mqtt` | Topic prefix for Z2M |
 | Warning LQI | 50 | Links below this show yellow |
 | Critical LQI | 20 | Links below this show red |
 | Scan timeout | 1000s | Max wait for network scan (60–1200s) |
@@ -73,78 +107,105 @@ Click **Configure** on the integration to adjust:
 | Hop colors | *(built-in palette)* | Four custom ring gradient colors ([details](https://nordstad.github.io/zigporter-hacs/guide/colors/)) |
 | Hop opacity | 0.90 | Opacity of hop ring fills (0.1–1.0) |
 
-> **Tip:** If you have both ZHA and Zigbee2MQTT running, you can switch between them in options to view either network — no need to remove and re-add the integration.
+> **Tip:** If you use both ZHA and Zigbee2MQTT, add separate entries to view
+> both networks, or switch an existing entry's backend in its options.
 
 ## Dashboard card
 
 The card JS is registered automatically — no manual resource setup needed.
 
-> **First install:** After adding the integration, refresh your browser (F5) before adding the card. The card resource is registered on integration load, but the browser needs a page refresh to pick it up.
+> **First install:** After adding the integration, refresh your browser (F5)
+> before adding the card. The card resource is registered on integration load,
+> but the browser needs a page refresh to pick it up.
 
 ### Adding the card
 
-> **Important:** The card must be added to its own **Panel** view. It is sized to fill the whole page and does not display correctly in Sections or Masonry views.
+> **Important:** The card must be added to its own **Panel** view. It is sized
+> to fill the whole page and does not display correctly in Sections or Masonry
+> views.
 
-1. Open your dashboard and click the **pencil icon** (top-right) to enter edit mode.
+1. Open your dashboard and click the **pencil icon** (top-right) to enter edit
+   mode.
 2. Click the **+** tab to create a new view.
-3. In the view settings, select **Panel (single card)** as the layout, give it a title (e.g. "Zigbee Network"), and click **Save**.
+3. In the view settings, select **Panel (single card)** as the layout, give it a
+   title (e.g. "Zigbee Network"), and click **Save**.
 4. Click **+ Add card** (bottom-right).
-5. Search for **"Zigporter"** — or scroll to the bottom and choose **Manual**, then paste:
+5. Search for **"Zigporter"** — or scroll to the bottom and choose **Manual**,
+   then paste:
 
-```yaml
-type: custom:zigporter-network-map-card
-```
+   ```yaml
+   type: custom:zigporter-network-map-card
+   ```
 
 6. Click **Save**, then **Done** to exit edit mode.
 
-The map will appear empty until you click **Scan** to request the first network topology.
+The map will appear empty until you click **Scan** to request the first network
+topology.
 
 ### Card options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `title` | Zigbee Network Map | Card header text |
 | `show_stats` | `true` | Show device count, hops, and scan duration |
-| `entry_id` | *(original entry)* | Which Zigporter entry (bridge) the card shows. Pick it in the card editor. Cards without it show your original entry |
+| `entry_id` | *(original entry)* | Bridge to show; select in the card editor |
+
+Cards without `entry_id` show your original entry.
 
 ## How it works
 
-The integration requests a network topology scan from your Zigbee backend, builds a routing tree using bidirectional LQI for best-path parent selection, renders it as a radial SVG, and delivers it to the card via WebSocket.
+The integration requests a network topology scan from your Zigbee backend,
+builds a routing tree using bidirectional LQI for best-path parent selection,
+renders it as a radial SVG, and delivers it to the card via WebSocket.
 
 - **Zigbee2MQTT** — publishes to `zigbee2mqtt/bridge/request/networkmap` via MQTT
 - **ZHA** — reads device list and neighbor tables from the ZHA gateway
 
-> **Note:** The network map is a point-in-time snapshot. Zigbee mesh networks continuously optimize their routing, and devices may join or leave. The card displays the scan date in the stats line so you know how current the map is. Click **Scan** to capture a fresh topology.
+> **Note:** The network map is a point-in-time snapshot. Zigbee mesh networks
+> continuously optimize their routing, and devices may join or leave. The card
+> displays the scan date in the stats line so you know how current the map is.
+> Click **Scan** to capture a fresh topology.
 
 ## Limitations
 
 - ZHA maps may lack routing data, producing a flat topology.
 - First scan after HA restart can be slow (coordinator queries each device).
-- Very large networks (100+ devices) produce large SVGs — the cache avoids repeated scans.
+- Very large networks (100+ devices) produce large SVGs — the cache avoids
+  repeated scans.
 
 ## Related: Zigporter CLI
 
-This HACS integration is the Home Assistant-native companion to [**Zigporter CLI**](https://github.com/nordstad/zigporter) — a terminal tool for managing your Zigbee network:
+This Home Assistant integration is the companion to
+[**Zigporter CLI**](https://github.com/nordstad/zigporter) — a terminal tool for
+managing your Zigbee network:
 
-- **Migrate** devices between ZHA and Zigbee2MQTT (both directions) with automated entity/dashboard cascade
-- **Rename** devices and entities with full HA reference updates (automations, scripts, dashboards)
-- **Network map** — the same radial SVG visualization, exported as a standalone file
+- **Migrate** devices between ZHA and Zigbee2MQTT (both directions) with
+  automated entity/dashboard cascade
+- **Rename** devices and entities with full HA reference updates (automations,
+  scripts, dashboards)
+- **Network map** — the same radial SVG visualization, exported as a standalone
+  file
 - **Stale device cleanup** — find and remove offline/ghost devices
 
-Install via `uv tool install zigporter`, `pip install zigporter`, or `brew tap nordstad/zigporter && brew install zigporter`.
+Install via `uv tool install zigporter`, `pip install zigporter`, or
+`brew tap nordstad/zigporter && brew install zigporter`.
 
 [Documentation](https://nordstad.github.io/zigporter/) · [Interactive demo](https://nordstad.github.io/zigporter/interactive-demo/)
 
 ## In the wild
 
-Zigporter was featured by [BeardedTinker](https://www.youtube.com/@BeardedTinker) in [Home Assistant Finally Lets Me Organize Everything!](https://youtu.be/z577_82asxU?t=298), where he walks through how to use it.
+Zigporter was featured by [BeardedTinker](https://www.youtube.com/@BeardedTinker)
+in [Home Assistant Finally Lets Me Organize Everything!](https://youtu.be/z577_82asxU?t=298),
+where he walks through how to use it.
 
 [![Home Assistant Finally Lets Me Organize Everything! by BeardedTinker](https://img.youtube.com/vi/z577_82asxU/maxresdefault.jpg)](https://youtu.be/z577_82asxU?t=298)
 
 ## Support
 
 - Want to try new features early? See [Beta testing](https://nordstad.github.io/zigporter-hacs/guide/beta-testing/).
-- Something not working? Check [Troubleshooting](https://nordstad.github.io/zigporter-hacs/troubleshooting/), then [open an issue](https://github.com/nordstad/zigporter-hacs/issues).
+- Something not working? Check
+  [Troubleshooting](https://nordstad.github.io/zigporter-hacs/troubleshooting/),
+  then [open an issue](https://github.com/nordstad/zigporter-hacs/issues).
 - Enjoying Zigporter? You can support development on Ko-fi.
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/nordstad)
