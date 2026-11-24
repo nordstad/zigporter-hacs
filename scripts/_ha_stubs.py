@@ -2,6 +2,7 @@
 custom_components.zigporter.* without a full HA installation."""
 
 import sys
+from functools import wraps
 from types import ModuleType
 from unittest.mock import MagicMock
 
@@ -14,9 +15,28 @@ def install() -> None:
         def __init_subclass__(cls, domain=None, **kwargs):
             super().__init_subclass__(**kwargs)
 
+    exceptions = ModuleType("homeassistant.exceptions")
+
+    class Unauthorized(Exception):
+        pass
+
+    exceptions.Unauthorized = Unauthorized
+
+    def _require_admin(func):
+        # Mirrors HA: reject non-admin users before the handler runs.
+        @wraps(func)
+        def with_admin(hass, connection, msg):
+            user = connection.user
+            if user is None or not user.is_admin:
+                raise Unauthorized
+            return func(hass, connection, msg)
+
+        return with_admin
+
     ws_api = ModuleType("homeassistant.components.websocket_api")
     ws_api.websocket_command = lambda schema: _identity
     ws_api.async_response = _identity
+    ws_api.require_admin = _require_admin
     ws_api.async_register_command = MagicMock()
     ws_api.ActiveConnection = object
 
@@ -53,6 +73,7 @@ def install() -> None:
         "homeassistant.components.websocket_api": ws_api,
         "homeassistant.config_entries": config_entries,
         "homeassistant.core": core,
+        "homeassistant.exceptions": exceptions,
         "homeassistant.helpers": ModuleType("homeassistant.helpers"),
         "homeassistant.helpers.config_validation": cv,
     }

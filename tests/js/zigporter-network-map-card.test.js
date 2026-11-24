@@ -288,6 +288,24 @@ describe("ZigporterNetworkMapCard", () => {
       expect(el._error).to.equal("Failed to load map");
     });
 
+    it("explains when a non-admin user is rejected", async () => {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+
+      el.hass = mockHass(() =>
+        Promise.reject({ code: "unauthorized", message: "Unauthorized" }),
+      );
+      await aTimeout(50);
+      await el.updateComplete;
+
+      expect(el._error).to.equal(
+        "Administrator access required to view the network map",
+      );
+    });
+
     it("displays stats after successful fetch", async () => {
       const el = await fixture(
         html`<zigporter-network-map-card></zigporter-network-map-card>`,

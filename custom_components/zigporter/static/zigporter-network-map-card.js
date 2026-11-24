@@ -765,7 +765,10 @@ class ZigporterNetworkMapCard extends LitElement {
         `Zigporter: scan failed after ${elapsed}s —`,
         err.message || err,
       );
-      this._error = err.message || "Failed to load map";
+      this._error =
+        err.code === "unauthorized"
+          ? "Administrator access required to view the network map"
+          : err.message || "Failed to load map";
       this._loading = false;
     } finally {
       this._buttonsDisabled = false;

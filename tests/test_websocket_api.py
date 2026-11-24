@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.exceptions import Unauthorized
 
 from custom_components.zigporter.const import (
     BACKEND_Z2M,
@@ -64,6 +65,7 @@ def mock_entry():
 @pytest.fixture
 def mock_connection():
     conn = MagicMock()
+    conn.user.is_admin = True
     conn.send_result = MagicMock()
     conn.send_error = MagicMock()
     return conn
@@ -74,6 +76,32 @@ class TestAsyncRegisterWebsocketCommands:
         with patch("custom_components.zigporter.websocket_api.websocket_api") as mock_ws_api:
             async_register_websocket_commands(mock_hass)
             assert mock_ws_api.async_register_command.call_count == 4
+
+
+_ALL_HANDLERS = [
+    (ws_scan_status, {"id": 1, "type": "zigporter/scan_status"}),
+    (ws_network_map, {"id": 1, "type": "zigporter/network_map", "force_refresh": True}),
+    (ws_history_list, {"id": 1, "type": "zigporter/history_list"}),
+    (ws_history_get, {"id": 1, "type": "zigporter/history_get", "snapshot_id": "1"}),
+]
+
+
+@pytest.mark.parametrize(("handler", "msg"), _ALL_HANDLERS)
+@pytest.mark.parametrize("user", [MagicMock(is_admin=False), None])
+async def test_handlers_reject_non_admin(handler, msg, user, mock_hass, mock_entry):
+    mock_hass.config_entries.async_entries.return_value = [mock_entry]
+    conn = MagicMock()
+    conn.user = user
+
+    with (
+        patch("custom_components.zigporter.websocket_api._run_scan") as run_scan,
+        pytest.raises(Unauthorized),
+    ):
+        await handler(mock_hass, conn, msg)
+
+    run_scan.assert_not_called()
+    mock_hass.async_add_executor_job.assert_not_called()
+    conn.send_result.assert_not_called()
 
 
 class TestGetConfigEntry:

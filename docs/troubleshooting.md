@@ -33,6 +33,12 @@ The card JavaScript is registered when the integration loads, but the browser ne
 
 A card without `entry_id` always shows your original Zigporter entry. Open the card editor and choose the bridge under **Zigporter entry**.
 
+### "Administrator access required to view the network map"
+
+The network map, scans and history are restricted to Home Assistant
+administrators, because they expose device names and network structure. Sign in
+with an administrator account to use the card.
+
 ### "A Zigporter entry for this MQTT topic prefix already exists"
 
 Each Zigbee2MQTT topic prefix can be used by one entry. Use a different prefix for the new bridge, or change or remove the existing entry first. Trailing slashes and spaces are ignored.

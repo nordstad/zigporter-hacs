@@ -63,6 +63,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
         vol.Optional("entry_id"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_scan_status(
     hass: HomeAssistant,
@@ -91,6 +92,7 @@ async def ws_scan_status(
         vol.Optional("entry_id"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_network_map(
     hass: HomeAssistant,
@@ -157,6 +159,7 @@ async def ws_network_map(
         vol.Optional("entry_id"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_history_list(
     hass: HomeAssistant,
@@ -184,6 +187,7 @@ async def ws_history_list(
         vol.Optional("entry_id"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def ws_history_get(
     hass: HomeAssistant,

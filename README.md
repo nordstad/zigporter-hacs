@@ -168,6 +168,8 @@ renders it as a radial SVG, and delivers it to the card via WebSocket.
 
 ## Limitations
 
+- The card only works for Home Assistant administrators: the network map,
+  scans and history expose device names and topology.
 - ZHA maps may lack routing data, producing a flat topology.
 - First scan after HA restart can be slow (coordinator queries each device).
 - Very large networks (100+ devices) produce large SVGs — the cache avoids
