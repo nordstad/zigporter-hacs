@@ -206,6 +206,8 @@ where he walks through how to use it.
 - Something not working? Check
   [Troubleshooting](https://nordstad.github.io/zigporter-hacs/troubleshooting/),
   then [open an issue](https://github.com/nordstad/zigporter-hacs/issues).
+- Found a security vulnerability? See our [security policy](SECURITY.md) to
+  report it privately.
 - Enjoying Zigporter? You can support development on Ko-fi.
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/nordstad)
