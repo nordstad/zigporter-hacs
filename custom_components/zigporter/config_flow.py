@@ -11,6 +11,11 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.core import callback
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 
 from .const import (
     BACKEND_Z2M,
@@ -126,6 +131,11 @@ class ZigporterConfigFlow(ConfigFlow, domain=DOMAIN):
         return ZigporterOptionsFlow()
 
 
+_LQI_SELECTOR = NumberSelector(
+    NumberSelectorConfig(min=1, max=255, step=1, mode=NumberSelectorMode.BOX)
+)
+
+
 class ZigporterOptionsFlow(OptionsFlow):
     """Handle Zigporter options."""
 
@@ -171,6 +181,9 @@ class ZigporterOptionsFlow(OptionsFlow):
                     if val and not val.startswith("#"):
                         val = f"#{val}"
                     user_input[key] = val.upper() if val else ""
+                for key in (CONF_WARN_LQI, CONF_CRITICAL_LQI):
+                    if key in user_input:
+                        user_input[key] = int(user_input[key])
                 return self.async_create_entry(title="", data=user_input)
 
         data = self.config_entry.data
@@ -195,11 +208,11 @@ class ZigporterOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_WARN_LQI,
                     default=current.get(CONF_WARN_LQI, DEFAULT_WARN_LQI),
-                ): vol.All(int, vol.Range(min=1, max=255)),
+                ): _LQI_SELECTOR,
                 vol.Optional(
                     CONF_CRITICAL_LQI,
                     default=current.get(CONF_CRITICAL_LQI, DEFAULT_CRITICAL_LQI),
-                ): vol.All(int, vol.Range(min=1, max=255)),
+                ): _LQI_SELECTOR,
                 vol.Optional(
                     CONF_CACHE_TTL,
                     default=current.get(CONF_CACHE_TTL, DEFAULT_CACHE_TTL),
