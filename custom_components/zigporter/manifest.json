@@ -2,6 +2,7 @@
   "domain": "zigporter",
   "name": "Zigporter",
   "after_dependencies": ["mqtt", "zha"],
+  "categories": ["hubs_protocols.wireless_protocols"],
   "codeowners": ["@nordstad"],
   "config_flow": true,
   "dependencies": ["frontend", "http"],
