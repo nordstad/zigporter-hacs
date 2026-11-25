@@ -894,22 +894,60 @@ describe("ZigporterNetworkMapCard", () => {
       expect(el._zoomLevel).to.be.greaterThan(1);
     });
 
-    it("_onWheel pans on trackpad scroll (small deltaY, no ctrlKey)", async () => {
+    it("_onWheel always zooms, even for small deltas", async () => {
       await createCardWithSvg();
-      const svgEl = el._svgEl;
-      const initialX = el._vb.x;
-      const initialY = el._vb.y;
-      const rect = svgEl.getBoundingClientRect();
+      const rect = el._svgEl.getBoundingClientRect();
       const event = new WheelEvent("wheel", {
-        deltaY: 10,
+        deltaY: -10,
         deltaX: 5,
         clientX: rect.left + rect.width / 2,
         clientY: rect.top + rect.height / 2,
         cancelable: true,
       });
-      svgEl.dispatchEvent(event);
-      expect(el._vb.x).to.be.greaterThan(initialX);
-      expect(el._vb.y).to.be.greaterThan(initialY);
+      el._svgEl.dispatchEvent(event);
+      expect(el._zoomLevel).to.be.greaterThan(1);
+    });
+
+    it("_onWheel handles line and page delta modes and clamps big deltas", async () => {
+      await createCardWithSvg();
+      const rect = el._svgEl.getBoundingClientRect();
+      const wheel = (init) =>
+        el._svgEl.dispatchEvent(
+          new WheelEvent("wheel", {
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+            cancelable: true,
+            ...init,
+          }),
+        );
+      wheel({ deltaY: -3, deltaMode: 1 });
+      const afterLines = el._vb.w;
+      expect(afterLines).to.be.lessThan(100);
+      el._resetView();
+      wheel({ deltaY: -1, deltaMode: 2 });
+      const afterPage = el._vb.w;
+      el._resetView();
+      wheel({ deltaY: -100000 });
+      expect(el._vb.w).to.be.closeTo(afterPage, 1e-6);
+    });
+
+    it("_onWheel keeps the point under the cursor fixed", async () => {
+      await createCardWithSvg();
+      const rect = el._svgEl.getBoundingClientRect();
+      const cx = rect.left + rect.width * 0.3;
+      const cy = rect.top + rect.height * 0.6;
+      const before = el._screenToSVG(cx, cy);
+      el._svgEl.dispatchEvent(
+        new WheelEvent("wheel", {
+          deltaY: -100,
+          clientX: cx,
+          clientY: cy,
+          cancelable: true,
+        }),
+      );
+      const after = el._screenToSVG(cx, cy);
+      expect(after.x).to.be.closeTo(before.x, 0.1);
+      expect(after.y).to.be.closeTo(before.y, 0.1);
     });
 
     it("_zoomBy zooms in centered on current view", async () => {
@@ -2306,6 +2344,604 @@ describe("ZigporterNetworkMapCard", () => {
       const b = await createCard({ entry_id: "b" });
       expect(a.calls.every((c) => c.entry_id === "a")).to.be.true;
       expect(b.calls.every((c) => c.entry_id === "b")).to.be.true;
+    });
+  });
+
+  describe("node tap and popup", () => {
+    const DEVICE_A = "a".repeat(32);
+    const SVG_WITH_NODE_DATA =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">' +
+      '<circle cx="50" cy="50" r="10" data-name="Coordinator" data-ieee="0xc0" data-type="Coordinator"/>' +
+      '<circle cx="20" cy="20" r="6" data-name="Lamp" data-ieee="0xa1" data-type="Router" data-lqi="120" data-depth="1" data-parent="Coordinator"/>' +
+      '<circle cx="80" cy="80" r="6" data-name="Old Sensor"/>' +
+      '<circle cx="80" cy="20" r="6" data-name="Near" data-ieee="0xn1" data-type="EndDevice"/>' +
+      '<circle cx="84" cy="20" r="6" data-name="Far" data-ieee="0xn2" data-type="EndDevice"/>' +
+      "</svg>";
+
+    async function createCard(devices = { "0xa1": DEVICE_A }, extra = {}) {
+      const el = await fixture(
+        html`<zigporter-network-map-card></zigporter-network-map-card>`,
+      );
+      el.setConfig({});
+      await el.updateComplete;
+      el.hass = mockHass((msg) => {
+        if (msg.type === "zigporter/scan_status")
+          return Promise.resolve({ scanning: false });
+        return Promise.resolve({
+          svg: SVG_WITH_NODE_DATA,
+          devices,
+          device_count: 3,
+          max_depth: 1,
+          scan_duration_ms: 100,
+          backend: "z2m",
+          ...extra,
+        });
+      });
+      await aTimeout(50);
+      await el.updateComplete;
+      el._svgEl.setPointerCapture = () => {};
+      return el;
+    }
+
+    function pointAt(el, x, y) {
+      const rect = el._svgEl.getBoundingClientRect();
+      const ctm = el._svgEl.getScreenCTM();
+      if (ctm) return { x: ctm.a * x + ctm.e, y: ctm.d * y + ctm.f };
+      return { x: rect.left + x, y: rect.top + y };
+    }
+
+    function fire(el, type, init) {
+      el._svgEl.dispatchEvent(
+        new PointerEvent(type, { pointerId: 1, bubbles: true, ...init }),
+      );
+    }
+
+    function tap(el, x, y) {
+      const p = pointAt(el, x, y);
+      fire(el, "pointerdown", { clientX: p.x, clientY: p.y });
+      fire(el, "pointerup", { clientX: p.x, clientY: p.y });
+    }
+
+    it("tap on a node selects it with its device id", async () => {
+      const el = await createCard();
+      tap(el, 20, 20);
+      expect(el._selectedNode.name).to.equal("Lamp");
+      expect(el._selectedNode.deviceId).to.equal(DEVICE_A);
+      expect(el._selectedNode.parent).to.equal("Coordinator");
+    });
+
+    it("tap on empty space clears the selection", async () => {
+      const el = await createCard();
+      tap(el, 20, 20);
+      expect(el._selectedNode).to.not.be.null;
+      tap(el, 5, 95);
+      expect(el._selectedNode).to.be.null;
+    });
+
+    it("drag does not open the popup", async () => {
+      const el = await createCard();
+      const p = pointAt(el, 20, 20);
+      fire(el, "pointerdown", { clientX: p.x, clientY: p.y });
+      fire(el, "pointermove", { clientX: p.x + 30, clientY: p.y });
+      fire(el, "pointerup", { clientX: p.x + 30, clientY: p.y });
+      expect(el._selectedNode).to.be.null;
+    });
+
+    it("pinch does not open the popup", async () => {
+      const el = await createCard();
+      const p = pointAt(el, 20, 20);
+      fire(el, "pointerdown", { clientX: p.x, clientY: p.y });
+      fire(el, "pointerdown", {
+        pointerId: 2,
+        clientX: p.x + 50,
+        clientY: p.y,
+      });
+      fire(el, "pointerup", { clientX: p.x, clientY: p.y });
+      fire(el, "pointerup", { pointerId: 2, clientX: p.x + 50, clientY: p.y });
+      expect(el._selectedNode).to.be.null;
+    });
+
+    it("pointercancel does not open the popup", async () => {
+      const el = await createCard();
+      const p = pointAt(el, 20, 20);
+      fire(el, "pointerdown", { clientX: p.x, clientY: p.y });
+      fire(el, "pointercancel", { clientX: p.x, clientY: p.y });
+      expect(el._selectedNode).to.be.null;
+    });
+
+    it("long press does not open the popup", async () => {
+      const el = await createCard();
+      const p = pointAt(el, 20, 20);
+      fire(el, "pointerdown", { clientX: p.x, clientY: p.y });
+      await aTimeout(550);
+      fire(el, "pointerup", { clientX: p.x, clientY: p.y });
+      expect(el._selectedNode).to.be.null;
+    });
+
+    it("pointerup from a different pointer does not open the popup", async () => {
+      const el = await createCard();
+      const p = pointAt(el, 20, 20);
+      fire(el, "pointerdown", { clientX: p.x, clientY: p.y });
+      fire(el, "pointerup", { pointerId: 9, clientX: p.x, clientY: p.y });
+      expect(el._selectedNode).to.be.null;
+    });
+
+    it("node without data-ieee has no device id", async () => {
+      const el = await createCard();
+      tap(el, 80, 80);
+      expect(el._selectedNode.name).to.equal("Old Sensor");
+      expect(el._selectedNode.hasIeee).to.be.false;
+      expect(el._selectedNode.deviceId).to.be.null;
+    });
+
+    it("invalid device id is rejected", async () => {
+      const el = await createCard({ "0xa1": "not-a-valid-id" });
+      tap(el, 20, 20);
+      expect(el._selectedNode.hasIeee).to.be.true;
+      expect(el._selectedNode.deviceId).to.be.null;
+    });
+
+    it("closest of two overlapping circles wins", async () => {
+      const el = await createCard();
+      tap(el, 83, 20);
+      expect(el._selectedNode.name).to.equal("Far");
+      tap(el, 81, 20);
+      expect(el._selectedNode.name).to.equal("Near");
+    });
+
+    it("history snapshot replaces devices and clears selection", async () => {
+      const el = await createCard();
+      tap(el, 20, 20);
+      el._hass = mockHass((msg) => {
+        if (msg.type === "zigporter/history_get")
+          return Promise.resolve({
+            id: "1",
+            svg: SVG_WITH_NODE_DATA,
+            devices: { "0xa1": "b".repeat(32) },
+            device_count: 3,
+            max_depth: 1,
+            backend: "z2m",
+          });
+        return Promise.resolve({});
+      });
+      await el._selectHistorySnapshot("1");
+      expect(el._devices).to.deep.equal({ "0xa1": "b".repeat(32) });
+      expect(el._selectedNode).to.be.null;
+    });
+
+    it("history snapshot without devices gives an empty table", async () => {
+      const el = await createCard();
+      el._hass = mockHass(() =>
+        Promise.resolve({ id: "1", svg: SVG_WITH_NODE_DATA, device_count: 1 }),
+      );
+      await el._selectHistorySnapshot("1");
+      expect(el._devices).to.deep.equal({});
+    });
+
+    it("selecting a node draws a persistent ring that closing removes", async () => {
+      const el = await createCard();
+      tap(el, 20, 20);
+      await el.updateComplete;
+      const ring = el._svgEl.querySelector(".selected-ring");
+      expect(ring).to.exist;
+      expect(ring.getAttribute("cx")).to.equal("20");
+      expect(parseFloat(ring.getAttribute("r"))).to.be.greaterThan(6);
+      const before = parseFloat(ring.getAttribute("stroke-width"));
+      el._vb = { ...el._vb, w: 50, h: 50 };
+      el._applyViewBox();
+      const zoomed = el._svgEl.querySelector(".selected-ring");
+      expect(parseFloat(zoomed.getAttribute("stroke-width"))).to.be.lessThan(
+        before,
+      );
+      tap(el, 80, 20);
+      await el.updateComplete;
+      expect(el._svgEl.querySelectorAll(".selected-ring")).to.have.lengthOf(1);
+      el._selectedNode = null;
+      await el.updateComplete;
+      expect(el._svgEl.querySelector(".selected-ring")).to.be.null;
+    });
+
+    it("popup without circle position draws no ring", async () => {
+      const el = await createCard();
+      el._selectedNode = { name: "x", type: "Router", hasIeee: true };
+      await el.updateComplete;
+      expect(el._svgEl.querySelector(".selected-ring")).to.be.null;
+    });
+
+    it("accent colour only accepts hex fills", async () => {
+      const el = await createCard();
+      tap(el, 20, 20);
+      expect(el._selectedNode.color).to.be.null;
+      el._svgEl
+        .querySelector('[data-name="Lamp"]')
+        .setAttribute("fill", "#3b82f6");
+      tap(el, 20, 20);
+      expect(el._selectedNode.color).to.equal("#3b82f6");
+    });
+
+    it("old map popup shows only the rescan note", async () => {
+      const el = await createCard();
+      tap(el, 80, 80);
+      await el.updateComplete;
+      const popup = el.renderRoot.querySelector(".node-popup");
+      expect(popup.querySelector("dl")).to.be.null;
+      expect(popup.textContent).to.include("Run a new scan");
+    });
+
+    it("tap lands within a finger-sized margin around a node", async () => {
+      const el = await createCard();
+      tap(el, 20, 20 + 6 + 3);
+      expect(el._selectedNode.name).to.equal("Lamp");
+    });
+
+    it("_unitsPerPx falls back to the element rect without a CTM", async () => {
+      const el = await createCard();
+      el._svgEl.getScreenCTM = () => null;
+      const w = el._svgEl.getBoundingClientRect().width;
+      expect(el._unitsPerPx()).to.be.closeTo(el._vb.w / w, 1e-9);
+    });
+
+    it("pinch zoom keeps the point between the fingers fixed", async () => {
+      const el = await createCard();
+      const a = pointAt(el, 40, 50);
+      const b = pointAt(el, 60, 50);
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const before = el._screenToSVG(mid.x, mid.y);
+      fire(el, "pointerdown", { pointerId: 1, clientX: a.x, clientY: a.y });
+      fire(el, "pointerdown", { pointerId: 2, clientX: b.x, clientY: b.y });
+      fire(el, "pointermove", { pointerId: 1, clientX: a.x, clientY: a.y });
+      fire(el, "pointermove", {
+        pointerId: 1,
+        clientX: a.x - 20,
+        clientY: a.y,
+      });
+      fire(el, "pointermove", {
+        pointerId: 2,
+        clientX: b.x + 20,
+        clientY: b.y,
+      });
+      expect(el._zoomLevel).to.be.greaterThan(1);
+      const after = el._screenToSVG(mid.x, mid.y);
+      expect(after.x).to.be.closeTo(before.x, 0.5);
+      expect(after.y).to.be.closeTo(before.y, 0.5);
+    });
+
+    it("tap shows manufacturer and model as separate rows", async () => {
+      const el = await createCard(
+        { "0xa1": DEVICE_A },
+        {
+          device_details: {
+            "0xa1": { manufacturer: "IKEA", model: "TRADFRI bulb" },
+          },
+        },
+      );
+      tap(el, 20, 20);
+      await el.updateComplete;
+      expect(el._selectedNode.manufacturer).to.equal("IKEA");
+      expect(el._selectedNode.model).to.equal("TRADFRI bulb");
+      const labels = [...el.renderRoot.querySelectorAll(".node-popup dt")].map(
+        (d) => d.textContent,
+      );
+      expect(labels).to.include("Manufacturer");
+      expect(labels).to.include("Model");
+      expect(
+        el.renderRoot.querySelector(".node-popup").textContent,
+      ).to.not.include("·");
+    });
+
+    it("detail text handles partial, missing and odd details", async () => {
+      const el = await createCard();
+      expect(el._detailText({ model: "M" }, "model")).to.equal("M");
+      expect(el._detailText({ model: "M" }, "manufacturer")).to.be.null;
+      expect(el._detailText({ manufacturer: 5 }, "manufacturer")).to.be.null;
+      expect(el._detailText({ model: "" }, "model")).to.be.null;
+      expect(el._detailText(null, "model")).to.be.null;
+      expect(el._detailText("text", "model")).to.be.null;
+    });
+
+    it("a device with only a model shows only the Model row", async () => {
+      const el = await createCard(
+        { "0xa1": DEVICE_A },
+        { device_details: { "0xa1": { model: "TRADFRI bulb" } } },
+      );
+      tap(el, 20, 20);
+      await el.updateComplete;
+      const text = el.renderRoot.querySelector(".node-popup").textContent;
+      expect(text).to.include("Model");
+      expect(text).to.not.include("Manufacturer");
+    });
+
+    it("tap without details shows no model row", async () => {
+      const el = await createCard();
+      tap(el, 20, 20);
+      await el.updateComplete;
+      expect(el._selectedNode.model).to.be.null;
+      expect(
+        el.renderRoot.querySelector(".node-popup").textContent,
+      ).to.not.include("Model");
+    });
+
+    it("an address like __proto__ does not break anything", async () => {
+      const el = await createCard();
+      el._svgEl
+        .querySelector('[data-name="Lamp"]')
+        .setAttribute("data-ieee", "__proto__");
+      tap(el, 20, 20);
+      expect(el._selectedNode.model).to.be.null;
+    });
+
+    it("renders model as text, not markup", async () => {
+      const evil = "<img src=x onerror=alert(1)>";
+      const el = await createCard(
+        { "0xa1": DEVICE_A },
+        { device_details: { "0xa1": { model: evil } } },
+      );
+      tap(el, 20, 20);
+      await el.updateComplete;
+      const popup = el.renderRoot.querySelector(".node-popup");
+      expect(popup.querySelector("img")).to.be.null;
+      expect(popup.textContent).to.include(evil);
+    });
+
+    it("history snapshot replaces device details", async () => {
+      const el = await createCard();
+      el._hass = mockHass(() =>
+        Promise.resolve({
+          id: "1",
+          svg: SVG_WITH_NODE_DATA,
+          device_details: { "0xa1": { model: "Old" } },
+        }),
+      );
+      await el._selectHistorySnapshot("1");
+      expect(el._deviceDetails).to.deep.equal({ "0xa1": { model: "Old" } });
+    });
+
+    describe("popup", () => {
+      async function showPopup(node) {
+        const el = await createCard();
+        el._selectedNode = node;
+        await el.updateComplete;
+        return el;
+      }
+      const text = (el) =>
+        el.renderRoot.querySelector(".node-popup").textContent;
+
+      it("shows router details", async () => {
+        const el = await showPopup({
+          name: "Lamp",
+          type: "Router",
+          lqi: "120",
+          depth: "1",
+          parent: "Coordinator",
+          hasIeee: true,
+          deviceId: DEVICE_A,
+        });
+        const t = text(el);
+        for (const s of ["Lamp", "Router", "120", "1", "Coordinator"])
+          expect(t).to.include(s);
+      });
+
+      it("coordinator has no LQI row", async () => {
+        const el = await showPopup({
+          name: "Coordinator",
+          type: "Coordinator",
+          hasIeee: true,
+          deviceId: null,
+        });
+        expect(text(el)).to.include("Coordinator");
+        expect(text(el)).to.not.include("LQI to parent");
+      });
+
+      it("labels end devices and unknown types", async () => {
+        const el = await showPopup({
+          name: "x",
+          type: "EndDevice",
+          hasIeee: true,
+        });
+        expect(text(el)).to.include("End device");
+        el._selectedNode = { name: "x", type: null, hasIeee: true };
+        await el.updateComplete;
+        expect(text(el)).to.include("Unknown");
+      });
+
+      it("missing values show Unknown", async () => {
+        const el = await showPopup({
+          name: "x",
+          type: "Router",
+          lqi: "0",
+          depth: null,
+          parent: null,
+          hasIeee: true,
+        });
+        expect(text(el).match(/Unknown/g)).to.have.lengthOf(3);
+        el._selectedNode = {
+          name: "x",
+          type: "Router",
+          lqi: null,
+          hasIeee: true,
+        };
+        await el.updateComplete;
+        expect(text(el).match(/Unknown/g)).to.have.lengthOf(3);
+      });
+
+      it("Open device navigates to the device page", async () => {
+        const el = await showPopup({
+          name: "Lamp",
+          type: "Router",
+          hasIeee: true,
+          deviceId: DEVICE_A,
+        });
+        const calls = [];
+        el._navigate = (path) => calls.push(path);
+        el.renderRoot.querySelector(".node-popup-open").click();
+        expect(calls).to.deep.equal([`/config/devices/device/${DEVICE_A}`]);
+      });
+
+      it("colours LQI like the legend", async () => {
+        const el = await showPopup(null);
+        const cases = [
+          ["120", "lqi-good"],
+          ["50", "lqi-good"],
+          ["49", "lqi-warn"],
+          ["20", "lqi-warn"],
+          ["19", "lqi-crit"],
+          ["1", "lqi-crit"],
+          ["0", ""],
+          [null, ""],
+          ["abc", ""],
+        ];
+        for (const [lqi, cls] of cases) {
+          el._selectedNode = {
+            name: "x",
+            type: "Router",
+            hasIeee: true,
+            lqi,
+          };
+          await el.updateComplete;
+          const dd = el.renderRoot.querySelector(
+            ".node-popup dd:nth-of-type(2)",
+          );
+          expect(dd.className.trim(), String(lqi)).to.equal(cls);
+        }
+      });
+
+      it("legend and popup follow the configured thresholds", async () => {
+        const el = await createCard({}, { warn_lqi: 80, critical_lqi: 30 });
+        const legend = el.renderRoot.querySelector(".legend").textContent;
+        for (const s of [
+          "Weak (<80)",
+          "Critical (<30)",
+          "LQI ≥ 80",
+          "LQI 30–80",
+          "LQI < 30",
+        ])
+          expect(legend).to.include(s);
+        const cases = [
+          ["80", "lqi-good"],
+          ["79", "lqi-warn"],
+          ["30", "lqi-warn"],
+          ["29", "lqi-crit"],
+        ];
+        for (const [lqi, cls] of cases) {
+          el._selectedNode = { name: "x", type: "Router", hasIeee: true, lqi };
+          await el.updateComplete;
+          const dd = el.renderRoot.querySelector(
+            ".node-popup dd:nth-of-type(2)",
+          );
+          expect(dd.className.trim(), lqi).to.equal(cls);
+        }
+      });
+
+      it("history snapshot brings its own thresholds, old ones fall back", async () => {
+        const el = await createCard();
+        expect(el.renderRoot.querySelector(".legend").textContent).to.include(
+          "LQI ≥ 50",
+        );
+        el._hass = mockHass(() =>
+          Promise.resolve({
+            id: "1",
+            svg: SVG_WITH_NODE_DATA,
+            warn_lqi: 90,
+            critical_lqi: 40,
+          }),
+        );
+        await el._selectHistorySnapshot("1");
+        await el.updateComplete;
+        expect(el.renderRoot.querySelector(".legend").textContent).to.include(
+          "LQI ≥ 90",
+        );
+      });
+
+      it("shows a Last seen row for a valid time only", async () => {
+        const base = { name: "x", type: "Router", hasIeee: true };
+        const el = await showPopup({
+          ...base,
+          lastSeen: "2026-01-01T12:00:00+00:00",
+        });
+        expect(text(el)).to.include("Last seen");
+        for (const lastSeen of [null, "garbage"]) {
+          el._selectedNode = { ...base, lastSeen };
+          await el.updateComplete;
+          expect(text(el)).to.not.include("Last seen");
+        }
+      });
+
+      it("tap reads data-last-seen from the node", async () => {
+        const el = await showPopup(null);
+        el._svgEl
+          .querySelector('[data-name="Lamp"]')
+          .setAttribute("data-last-seen", "2026-01-01T12:00:00+00:00");
+        tap(el, 20, 20);
+        expect(el._selectedNode.lastSeen).to.equal("2026-01-01T12:00:00+00:00");
+      });
+
+      it("shows a note when no device matches", async () => {
+        const el = await showPopup({
+          name: "x",
+          type: "Router",
+          hasIeee: true,
+          deviceId: null,
+        });
+        expect(text(el)).to.include("No matching Home Assistant device");
+        expect(el.renderRoot.querySelector(".node-popup-open")).to.be.null;
+      });
+
+      it("asks for a new scan on old maps", async () => {
+        const el = await showPopup({
+          name: "x",
+          type: "Router",
+          hasIeee: false,
+          deviceId: null,
+        });
+        expect(text(el)).to.include("Run a new scan to link this device");
+        expect(el.renderRoot.querySelector(".node-popup-open")).to.be.null;
+      });
+
+      it("close button removes the popup", async () => {
+        const el = await showPopup({ name: "x", type: "Router" });
+        el.renderRoot.querySelector(".node-popup-close").click();
+        await el.updateComplete;
+        expect(el._selectedNode).to.be.null;
+        expect(el.renderRoot.querySelector(".node-popup")).to.be.null;
+      });
+
+      it("_resetView closes the popup", async () => {
+        const el = await showPopup({ name: "x", type: "Router" });
+        el._resetView();
+        expect(el._selectedNode).to.be.null;
+      });
+
+      it("_navigate pushes state and fires location-changed", async () => {
+        const el = await createCard();
+        const original = window.history.pushState;
+        const pushed = [];
+        window.history.pushState = (...args) => pushed.push(args);
+        let fired = false;
+        const onChange = () => (fired = true);
+        window.addEventListener("location-changed", onChange);
+        try {
+          el._navigate("/x");
+        } finally {
+          window.history.pushState = original;
+          window.removeEventListener("location-changed", onChange);
+        }
+        expect(pushed).to.have.lengthOf(1);
+        expect(pushed[0][2]).to.equal("/x");
+        expect(fired).to.be.true;
+      });
+
+      it("renders names as text, not markup", async () => {
+        const evil = "<img src=x onerror=alert(1)>";
+        const el = await showPopup({
+          name: evil,
+          type: "Router",
+          parent: evil,
+          hasIeee: true,
+        });
+        const popup = el.renderRoot.querySelector(".node-popup");
+        expect(popup.querySelector("img")).to.be.null;
+        expect(popup.textContent).to.include(evil);
+      });
     });
   });
 

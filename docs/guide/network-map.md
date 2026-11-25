@@ -42,9 +42,10 @@ Each Zigporter entry (one per Zigbee2MQTT topic, plus at most one ZHA) has its o
 
 ## Interactions
 
-- **Pan** — click and drag the map; on a trackpad, two-finger scroll pans (small delta values are treated as pan, not zoom)
-- **Zoom** — mouse wheel or pinch gesture (`Ctrl`+scroll); `+` / `−` buttons in the header for reliable zoom on any input device
+- **Pan** — click and drag the map (or drag with one finger on a touch screen)
+- **Zoom** — mouse wheel, trackpad scroll or pinch; on a touch screen, pinch with two fingers. The point under the cursor or between your fingers stays in place. `+` / `−` buttons in the header zoom around the centre
 - **Reset** — click "Reset" button to return to the default view
+- **Tap a device** — tap or click a device to see its type, manufacturer and model, LQI to its parent (coloured like the legend, using your warning and critical thresholds), hops, parent and when it was last seen. The selected device gets a white ring. **Open device** goes to the Home Assistant device page. The button needs Zigbee2MQTT's Home Assistant integration to be turned on (`homeassistant: true` in Z2M), or ZHA. Maps scanned before this version need one new scan.
 
 ## Device search
 
