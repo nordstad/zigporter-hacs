@@ -494,3 +494,27 @@ class TestOptionsFlowConflicts:
         result = await _options_flow(one, [one]).async_step_init()
 
         assert result["type"] == "form"
+
+
+class TestOptionsFlowLqiFields:
+    async def test_lqi_fields_are_number_boxes_not_sliders(self):
+        flow = _options_flow(_entry("a"), [_entry("a")])
+
+        result = await flow.async_step_init()
+
+        schema = result["data_schema"].schema
+        for key in (CONF_WARN_LQI, CONF_CRITICAL_LQI):
+            selector = next(v for k, v in schema.items() if k == key)
+            assert selector.config["mode"] == "box"
+            assert (selector.config["min"], selector.config["max"]) == (1, 255)
+
+    async def test_lqi_values_are_saved_as_integers(self):
+        flow = _options_flow(_entry("a"), [_entry("a")])
+
+        result = await flow.async_step_init(
+            {CONF_BACKEND: BACKEND_Z2M, CONF_WARN_LQI: 100.0, CONF_CRITICAL_LQI: 25.0}
+        )
+
+        data = result["data"]
+        assert data[CONF_WARN_LQI] == 100 and isinstance(data[CONF_WARN_LQI], int)
+        assert data[CONF_CRITICAL_LQI] == 25 and isinstance(data[CONF_CRITICAL_LQI], int)

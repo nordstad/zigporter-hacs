@@ -3,7 +3,7 @@ custom_components.zigporter.* without a full HA installation."""
 
 import sys
 from functools import wraps
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
 
@@ -64,6 +64,25 @@ def install() -> None:
     cv = ModuleType("homeassistant.helpers.config_validation")
     cv.config_entry_only_config_schema = lambda domain: {}
 
+    device_registry = ModuleType("homeassistant.helpers.device_registry")
+    device_registry.async_get = MagicMock()
+
+    selector = ModuleType("homeassistant.helpers.selector")
+
+    class NumberSelector:
+        def __init__(self, config):
+            self.config = config
+
+        def __call__(self, data):
+            return data
+
+    selector.NumberSelector = NumberSelector
+    selector.NumberSelectorConfig = dict
+    selector.NumberSelectorMode = SimpleNamespace(BOX="box", SLIDER="slider")
+
+    helpers = ModuleType("homeassistant.helpers")
+    helpers.device_registry = device_registry
+
     stubs = {
         "homeassistant": ModuleType("homeassistant"),
         "homeassistant.components": ModuleType("homeassistant.components"),
@@ -74,8 +93,10 @@ def install() -> None:
         "homeassistant.config_entries": config_entries,
         "homeassistant.core": core,
         "homeassistant.exceptions": exceptions,
-        "homeassistant.helpers": ModuleType("homeassistant.helpers"),
+        "homeassistant.helpers": helpers,
+        "homeassistant.helpers.device_registry": device_registry,
         "homeassistant.helpers.config_validation": cv,
+        "homeassistant.helpers.selector": selector,
     }
     for name, mod in stubs.items():
         sys.modules.setdefault(name, mod)

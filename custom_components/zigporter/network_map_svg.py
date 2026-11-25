@@ -363,6 +363,7 @@ def _draw_node(
     lqi: int,
     warn_lqi: int,
     critical_lqi: int,
+    parent_name: str | None,
 ) -> None:
     """Draw a single node: circle + glow + LQI badge + label pill + label text."""
     node_type = node.get("type", "EndDevice")
@@ -399,6 +400,16 @@ def _draw_node(
         circle_attrs["filter"] = glow_filter
     if is_alert:
         circle_attrs["class"] = "alert"
+    circle_attrs["data-ieee"] = ieee
+    circle_attrs["data-type"] = node_type
+    if not is_coord:
+        circle_attrs["data-lqi"] = str(lqi)
+        circle_attrs["data-depth"] = str(depth)
+        if parent_name is not None:
+            circle_attrs["data-parent"] = parent_name
+        last_seen = node.get("last_seen")
+        if last_seen:
+            circle_attrs["data-last-seen"] = str(last_seen)
     ET.SubElement(node_group, "circle", circle_attrs)
 
     # LQI badge inside non-coordinator nodes
@@ -850,6 +861,8 @@ def render_svg(
         path_lqi_val = path_min_lqi.get(ieee, 0)
         coord_lqi = None  # coord_lqi_map not passed in HACS version
         angle = angles.get(ieee, 0.0)
+        parent_ieee = parent_map.get(ieee)
+        parent_name = nodes[parent_ieee].get("friendlyName", parent_ieee) if parent_ieee else None
         _draw_node(
             svg,
             node_group,
@@ -865,6 +878,7 @@ def render_svg(
             lqi_map.get(ieee, 0),
             warn_lqi,
             critical_lqi,
+            parent_name,
         )
 
     return ET.tostring(svg, encoding="unicode")

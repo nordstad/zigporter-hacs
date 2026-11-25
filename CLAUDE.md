@@ -20,6 +20,7 @@ Custom Home Assistant integration (HACS) that renders a radial Zigbee network ma
 - **Admin-only WebSocket API**: every `zigporter/*` command uses
   `@websocket_api.require_admin` (topology, device names, scans and history are
   sensitive). New commands must too.
+- **Device links**: the address-to-device-id table is looked up in the device registry on every `network_map`/`history_get` response and is never stored in the SVG, cache or history.
 - **Manual refresh only** (`DEFAULT_CACHE_TTL = 0`): SVG is cached to disk, user clicks ↻ to re-scan
 - **Disk persistence**: Cache saved to `/config/zigporter/network_map_cache.json`
 - **No auto-refresh**: Scans take 15-70s, too expensive for polling

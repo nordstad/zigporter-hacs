@@ -6,6 +6,16 @@ import {
 } from "https://cdn.jsdelivr.net/npm/lit@3/+esm";
 import { unsafeHTML } from "https://cdn.jsdelivr.net/npm/lit@3/directives/unsafe-html.js/+esm";
 
+const TAP_MAX_MOVE_PX = 6;
+const TAP_MAX_MS = 500;
+const TAP_SLOP_PX = 14;
+
+const NODE_TYPE_LABELS = {
+  Coordinator: "Coordinator",
+  Router: "Router",
+  EndDevice: "End device",
+};
+
 class ZigporterNetworkMapCard extends LitElement {
   static properties = {
     _config: { state: true },
@@ -24,6 +34,7 @@ class ZigporterNetworkMapCard extends LitElement {
     _historyOpen: { state: true },
     _historyList: { state: true },
     _historySnapshot: { state: true },
+    _selectedNode: { state: true },
   };
 
   static styles = css`
@@ -52,6 +63,100 @@ class ZigporterNetworkMapCard extends LitElement {
     }
     .map-container {
       width: 100%;
+      position: relative;
+    }
+    .node-popup {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 5;
+      width: max-content;
+      min-width: 200px;
+      max-width: min(320px, calc(100% - 24px));
+      box-sizing: border-box;
+      padding: 12px 14px;
+      background: var(--card-background-color, #1e1e1e);
+      border: 1px solid var(--divider-color, #444);
+      border-top: 3px solid var(--accent, var(--primary-color));
+      border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+      font-size: 13px;
+      color: var(--primary-text-color);
+    }
+    .node-popup-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .node-popup-dot {
+      flex: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent, var(--primary-color));
+    }
+    .node-popup-name {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--primary-text-color);
+      overflow-wrap: anywhere;
+    }
+    .node-popup-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--secondary-text-color);
+      font-size: 20px;
+      line-height: 1;
+      padding: 0 2px;
+    }
+    .node-popup dl {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 4px 14px;
+      margin: 10px 0;
+    }
+    .node-popup dt {
+      color: var(--secondary-text-color);
+    }
+    .node-popup dd {
+      margin: 0;
+      font-weight: 500;
+      color: var(--primary-text-color);
+      overflow-wrap: anywhere;
+    }
+    .node-popup dd.lqi-good {
+      color: #22c55e;
+    }
+    .node-popup dd.lqi-warn {
+      color: #f59e0b;
+    }
+    .node-popup dd.lqi-crit {
+      color: #ef4444;
+    }
+    .node-popup-open {
+      width: 100%;
+      margin-top: 4px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+    }
+    .node-popup-open:hover {
+      filter: brightness(1.1);
+    }
+    .node-popup-note {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--secondary-text-color);
+    }
+    .map-container svg circle[data-name] {
+      cursor: pointer;
     }
     .map-container svg {
       width: 100%;
@@ -323,6 +428,12 @@ class ZigporterNetworkMapCard extends LitElement {
     this._loading = false;
     this._error = null;
     this._svgContent = null;
+    this._devices = {};
+    this._deviceDetails = {};
+    this._warnLqi = 50;
+    this._critLqi = 20;
+    this._selectedNode = null;
+    this._tapStart = null;
     this._stats = null;
     this._elapsed = 0;
     this._buttonsDisabled = false;
@@ -419,6 +530,7 @@ class ZigporterNetworkMapCard extends LitElement {
         }
       }
     }
+    if (changedProps.has("_selectedNode")) this._syncSelectionRing();
   }
 
   render() {
@@ -442,6 +554,7 @@ class ZigporterNetworkMapCard extends LitElement {
                 ? this._renderError()
                 : this._renderMap()
           }
+          ${this._selectedNode ? this._renderNodePopup() : nothing}
         </div>
       </ha-card>
     `;
@@ -622,25 +735,25 @@ class ZigporterNetworkMapCard extends LitElement {
           >
           <span class="legend-item"
             ><span class="legend-dot warn" style="background:#0ea5e9"></span
-            ><span>Weak (&lt;50)</span></span
+            ><span>Weak (&lt;${this._warnLqi})</span></span
           >
           <span class="legend-item"
             ><span class="legend-dot crit" style="background:#0ea5e9"></span
-            ><span>Critical (&lt;20)</span></span
+            ><span>Critical (&lt;${this._critLqi})</span></span
           >
         </div>
         <div class="legend-section">
           <span class="legend-item"
             ><span class="legend-line" style="background:#22c55e"></span
-            ><span>LQI ≥ 50</span></span
+            ><span>LQI ≥ ${this._warnLqi}</span></span
           >
           <span class="legend-item"
             ><span class="legend-line" style="background:#f59e0b"></span
-            ><span>LQI 20–50</span></span
+            ><span>LQI ${this._critLqi}–${this._warnLqi}</span></span
           >
           <span class="legend-item"
             ><span class="legend-line" style="background:#ef4444"></span
-            ><span>LQI &lt; 20</span></span
+            ><span>LQI &lt; ${this._critLqi}</span></span
           >
           <span class="legend-item"
             ><span
@@ -698,6 +811,9 @@ class ZigporterNetworkMapCard extends LitElement {
     this._buttonsDisabled = true;
     this._error = null;
     this._svgContent = null;
+    this._devices = {};
+    this._deviceDetails = {};
+    this._selectedNode = null;
     this._historySnapshot = null;
 
     let timerOffset = 0;
@@ -741,6 +857,10 @@ class ZigporterNetworkMapCard extends LitElement {
       }
 
       this._svgContent = svgString;
+      this._devices = result.devices || {};
+      this._deviceDetails = result.device_details || {};
+      this._warnLqi = result.warn_lqi || 50;
+      this._critLqi = result.critical_lqi || 20;
       this._entryTitle = result.entry_title || null;
       this._loading = false;
 
@@ -851,6 +971,11 @@ class ZigporterNetworkMapCard extends LitElement {
       }
 
       this._svgContent = svgString;
+      this._devices = result.devices || {};
+      this._deviceDetails = result.device_details || {};
+      this._warnLqi = result.warn_lqi || 50;
+      this._critLqi = result.critical_lqi || 20;
+      this._selectedNode = null;
       this._historySnapshot = result;
       this._loading = false;
 
@@ -1064,11 +1189,18 @@ class ZigporterNetworkMapCard extends LitElement {
     };
   }
 
+  _unitsPerPx() {
+    const ctm = this._svgEl.getScreenCTM();
+    if (ctm && ctm.a) return 1 / ctm.a;
+    return this._vb.w / this._svgEl.getBoundingClientRect().width;
+  }
+
   _applyViewBox() {
     this._svgEl.setAttribute(
       "viewBox",
       `${this._vb.x} ${this._vb.y} ${this._vb.w} ${this._vb.h}`,
     );
+    if (this._selectedNode) this._syncSelectionRing();
   }
 
   _resetView() {
@@ -1081,6 +1213,7 @@ class ZigporterNetworkMapCard extends LitElement {
     this._searchResults = [];
     this._searchActiveIndex = -1;
     this._clearHighlight();
+    this._selectedNode = null;
   }
 
   _zoomBy(factor) {
@@ -1102,29 +1235,34 @@ class ZigporterNetworkMapCard extends LitElement {
     e.stopPropagation();
     if (!this._vb) return;
 
-    const isMouseWheel =
-      e.deltaMode !== 0 || (Math.abs(e.deltaY) > 50 && Math.abs(e.deltaX) < 5);
-    if (e.ctrlKey || isMouseWheel) {
-      // Pinch gesture (ctrlKey) or physical mouse wheel → zoom to cursor
-      const factor = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.001));
-      const newZoom = this._vbInitial.w / (this._vb.w * factor);
-      if (newZoom < 1 || newZoom > 8) return;
-      const svgPt = this._screenToSVG(e.clientX, e.clientY);
-      this._vb.w *= factor;
-      this._vb.h *= factor;
-      const rect = this._svgEl.getBoundingClientRect();
-      this._vb.x =
-        svgPt.x - ((e.clientX - rect.left) / rect.width) * this._vb.w;
-      this._vb.y =
-        svgPt.y - ((e.clientY - rect.top) / rect.height) * this._vb.h;
-      this._zoomLevel = this._vbInitial.w / this._vb.w;
-    } else {
-      // Two-finger scroll (trackpad, small pixel deltas) → pan
-      const rect = this._svgEl.getBoundingClientRect();
-      this._vb.x += (e.deltaX / rect.width) * this._vb.w;
-      this._vb.y += (e.deltaY / rect.height) * this._vb.h;
-    }
+    // Always zoom (mouse wheel, trackpad scroll and ctrl+pinch alike), so the
+    // same gesture never pans in one moment and zooms in the next.
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+    const delta = Math.max(-100, Math.min(100, e.deltaY * unit));
+    this._zoomAt(
+      e.clientX,
+      e.clientY,
+      Math.exp(delta * (e.ctrlKey ? 0.01 : 0.0015)),
+    );
+  }
 
+  // Scale the view by `factor` while keeping the point under the cursor fixed.
+  // Uses the real screen mapping, since the map is letterboxed in the card.
+  _zoomAt(clientX, clientY, factor) {
+    const newZoom = this._vbInitial.w / (this._vb.w * factor);
+    if (newZoom < 1 || newZoom > 8) return;
+    const anchor = this._screenToSVG(clientX, clientY);
+    const cx = this._vb.x + this._vb.w / 2;
+    const cy = this._vb.y + this._vb.h / 2;
+    this._vb.w *= factor;
+    this._vb.h *= factor;
+    this._vb.x = cx - this._vb.w / 2;
+    this._vb.y = cy - this._vb.h / 2;
+    this._applyViewBox();
+    const after = this._screenToSVG(clientX, clientY);
+    this._vb.x += anchor.x - after.x;
+    this._vb.y += anchor.y - after.y;
+    this._zoomLevel = this._vbInitial.w / this._vb.w;
     this._applyViewBox();
   }
 
@@ -1134,7 +1272,14 @@ class ZigporterNetworkMapCard extends LitElement {
 
     if (this._pointers.size === 1) {
       this._lastPanPoint = { x: e.clientX, y: e.clientY };
+      this._tapStart = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        t: Date.now(),
+      };
     } else if (this._pointers.size === 2) {
+      this._tapStart = null;
       this._lastPanPoint = null;
       this._lastPinchDist = null;
       this._lastPinchMid = null;
@@ -1153,6 +1298,14 @@ class ZigporterNetworkMapCard extends LitElement {
   }
 
   _onPointerUp(e) {
+    const tap = this._tapStart;
+    if (tap && tap.id === e.pointerId) this._tapStart = null;
+    const isTap =
+      e.type === "pointerup" &&
+      tap &&
+      tap.id === e.pointerId &&
+      Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < TAP_MAX_MOVE_PX &&
+      Date.now() - tap.t < TAP_MAX_MS;
     this._pointers.delete(e.pointerId);
     if (this._pointers.size < 2) {
       this._lastPinchDist = null;
@@ -1164,13 +1317,198 @@ class ZigporterNetworkMapCard extends LitElement {
     } else {
       this._lastPanPoint = null;
     }
+    if (isTap) this._onTap(e.clientX, e.clientY);
+  }
+
+  _nodeAt(clientX, clientY) {
+    const pt = this._screenToSVG(clientX, clientY);
+    const slop = this._unitsPerPx() * TAP_SLOP_PX;
+    let best = null;
+    let bestDist = Infinity;
+    for (const c of this._svgEl.querySelectorAll("circle[data-name]")) {
+      const dist = Math.hypot(
+        parseFloat(c.getAttribute("cx")) - pt.x,
+        parseFloat(c.getAttribute("cy")) - pt.y,
+      );
+      if (dist <= parseFloat(c.getAttribute("r")) + slop && dist < bestDist) {
+        best = c;
+        bestDist = dist;
+      }
+    }
+    return best;
+  }
+
+  _onTap(clientX, clientY) {
+    const circle = this._nodeAt(clientX, clientY);
+    if (!circle) {
+      this._selectedNode = null;
+      return;
+    }
+    const ieee = circle.getAttribute("data-ieee");
+    const fill = circle.getAttribute("fill") || "";
+    const details =
+      ieee && Object.hasOwn(this._deviceDetails, ieee)
+        ? this._deviceDetails[ieee]
+        : null;
+    this._selectedNode = {
+      cx: circle.getAttribute("cx"),
+      cy: circle.getAttribute("cy"),
+      r: circle.getAttribute("r"),
+      color: /^#[0-9a-f]{3,8}$/i.test(fill) ? fill : null,
+      name: circle.getAttribute("data-name"),
+      type: circle.getAttribute("data-type"),
+      lqi: circle.getAttribute("data-lqi"),
+      depth: circle.getAttribute("data-depth"),
+      parent: circle.getAttribute("data-parent"),
+      lastSeen: circle.getAttribute("data-last-seen"),
+      manufacturer: this._detailText(details, "manufacturer"),
+      model: this._detailText(details, "model"),
+      hasIeee: !!ieee,
+      deviceId: ieee ? this._validDeviceId(this._devices[ieee]) : null,
+    };
+  }
+
+  _syncSelectionRing() {
+    const svg = this._svgEl;
+    if (!svg) return;
+    svg.querySelectorAll(".selected-ring").forEach((el) => el.remove());
+    const n = this._selectedNode;
+    if (!n || n.cx == null) return;
+    const ring = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle",
+    );
+    ring.setAttribute("cx", n.cx);
+    ring.setAttribute("cy", n.cy);
+    const upp = this._unitsPerPx();
+    ring.setAttribute("r", parseFloat(n.r) + 5 * upp);
+    ring.setAttribute("fill", "none");
+    ring.setAttribute("stroke", "#ffffff");
+    ring.setAttribute("stroke-width", 3 * upp);
+    ring.setAttribute("pointer-events", "none");
+    ring.classList.add("selected-ring");
+    svg.appendChild(ring);
+  }
+
+  _validDeviceId(id) {
+    return typeof id === "string" && /^[0-9a-f]{32}$/.test(id) ? id : null;
+  }
+
+  _renderNodePopup() {
+    const n = this._selectedNode;
+    const isCoord = n.type === "Coordinator";
+    const accent = n.color || "var(--primary-color)";
+    return html`
+      <div
+        class="node-popup"
+        role="dialog"
+        aria-label="Device details"
+        style=${`--accent: ${accent}`}
+      >
+        <div class="node-popup-header">
+          <span class="node-popup-dot"></span>
+          <strong class="node-popup-name">${n.name}</strong>
+          <button
+            class="node-popup-close"
+            title="Close"
+            @click=${() => (this._selectedNode = null)}
+          >
+            ×
+          </button>
+        </div>
+        ${
+          n.hasIeee
+            ? html`<dl>
+                <dt>Type</dt>
+                <dd>${NODE_TYPE_LABELS[n.type] || "Unknown"}</dd>
+                ${
+                  n.manufacturer
+                    ? html`<dt>Manufacturer</dt>
+                        <dd>${n.manufacturer}</dd>`
+                    : nothing
+                }
+                ${
+                  n.model
+                    ? html`<dt>Model</dt>
+                        <dd>${n.model}</dd>`
+                    : nothing
+                }
+                ${
+                  isCoord
+                    ? nothing
+                    : html`
+                        <dt>LQI to parent</dt>
+                        <dd class=${this._lqiClass(n.lqi)}>
+                          ${n.lqi && n.lqi !== "0" ? n.lqi : "Unknown"}
+                        </dd>
+                        <dt>Hops</dt>
+                        <dd>${n.depth || "Unknown"}</dd>
+                        <dt>Parent</dt>
+                        <dd>${n.parent || "Unknown"}</dd>
+                        ${
+                          this._formatLastSeen(n.lastSeen)
+                            ? html`<dt>Last seen</dt>
+                                <dd>${this._formatLastSeen(n.lastSeen)}</dd>`
+                            : nothing
+                        }
+                      `
+                }
+              </dl>`
+            : nothing
+        }
+        ${
+          n.deviceId
+            ? html`<button
+                class="node-popup-open"
+                @click=${() => this._openDevice(n.deviceId)}
+              >
+                Open device
+              </button>`
+            : html`<div class="node-popup-note">
+                ${
+                  n.hasIeee
+                    ? "No matching Home Assistant device"
+                    : "Run a new scan to link this device"
+                }
+              </div>`
+        }
+      </div>
+    `;
+  }
+
+  _detailText(details, field) {
+    if (!details || typeof details !== "object") return null;
+    const value = details[field];
+    return typeof value === "string" && value ? value : null;
+  }
+
+  _lqiClass(lqi) {
+    const value = Number(lqi);
+    if (!lqi || !value) return "";
+    if (value >= this._warnLqi) return "lqi-good";
+    return value >= this._critLqi ? "lqi-warn" : "lqi-crit";
+  }
+
+  _formatLastSeen(value) {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d.toLocaleString();
+  }
+
+  _openDevice(deviceId) {
+    this._navigate(`/config/devices/device/${encodeURIComponent(deviceId)}`);
+  }
+
+  _navigate(path) {
+    window.history.pushState(null, "", path);
+    window.dispatchEvent(new CustomEvent("location-changed"));
   }
 
   _handlePan(e) {
     if (!this._lastPanPoint) return;
-    const rect = this._svgEl.getBoundingClientRect();
-    const dx = ((this._lastPanPoint.x - e.clientX) / rect.width) * this._vb.w;
-    const dy = ((this._lastPanPoint.y - e.clientY) / rect.height) * this._vb.h;
+    const upp = this._unitsPerPx();
+    const dx = (this._lastPanPoint.x - e.clientX) * upp;
+    const dy = (this._lastPanPoint.y - e.clientY) * upp;
     this._vb.x += dx;
     this._vb.y += dy;
     this._lastPanPoint = { x: e.clientX, y: e.clientY };
@@ -1187,25 +1525,11 @@ class ZigporterNetworkMapCard extends LitElement {
 
     if (this._lastPinchDist !== null) {
       const scaleDelta = this._lastPinchDist / dist;
-      const newZoom = this._vbInitial.w / (this._vb.w * scaleDelta);
+      this._zoomAt(midX, midY, scaleDelta);
 
-      if (newZoom >= 1 && newZoom <= 8) {
-        const svgMid = this._screenToSVG(midX, midY);
-        this._vb.w *= scaleDelta;
-        this._vb.h *= scaleDelta;
-        const rect = this._svgEl.getBoundingClientRect();
-        const fracX = (midX - rect.left) / rect.width;
-        const fracY = (midY - rect.top) / rect.height;
-        this._vb.x = svgMid.x - fracX * this._vb.w;
-        this._vb.y = svgMid.y - fracY * this._vb.h;
-        this._zoomLevel = this._vbInitial.w / this._vb.w;
-      }
-
-      const rect = this._svgEl.getBoundingClientRect();
-      const svgDx = ((this._lastPinchMid.x - midX) / rect.width) * this._vb.w;
-      const svgDy = ((this._lastPinchMid.y - midY) / rect.height) * this._vb.h;
-      this._vb.x += svgDx;
-      this._vb.y += svgDy;
+      const upp = this._unitsPerPx();
+      this._vb.x += (this._lastPinchMid.x - midX) * upp;
+      this._vb.y += (this._lastPinchMid.y - midY) * upp;
       this._applyViewBox();
     }
 
