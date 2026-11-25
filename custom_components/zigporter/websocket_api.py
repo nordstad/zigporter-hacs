@@ -4,6 +4,7 @@ import asyncio
 import copy
 import json
 import logging
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,9 +13,11 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import mqtt, websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 
 from .const import (
     BACKEND_Z2M,
+    BACKEND_ZHA,
     CONF_BACKEND,
     CONF_CACHE_TTL,
     CONF_CRITICAL_LQI,
@@ -46,6 +49,10 @@ from .network_map_svg import render_svg
 _LOGGER = logging.getLogger(__name__)
 
 _HISTORY_LIMIT = 30  # max stored snapshots before pruning oldest
+# Bridge first: its identifiers also start with "zigbee2mqtt_".
+_Z2M_ID_PREFIXES = ("zigbee2mqtt_bridge_", "zigbee2mqtt_")
+_IEEE_KEY_RE = re.compile(r"[0-9a-f]{16}")
+_DETAIL_MAX_LEN = 100
 
 
 @callback
@@ -114,7 +121,7 @@ async def ws_network_map(
     if scan_task is not None and not scan_task.done():
         try:
             result = await asyncio.shield(scan_task)
-            connection.send_result(msg["id"], _with_entry_title(result, entry))
+            connection.send_result(msg["id"], _with_devices(hass, _with_entry_title(result, entry)))
         except asyncio.CancelledError:  # pragma: no cover
             return
         except Exception as exc:  # noqa: BLE001
@@ -123,11 +130,15 @@ async def ws_network_map(
 
     if not force_refresh and cache_data.get("cache") is not None:
         if cache_ttl <= 0:
-            connection.send_result(msg["id"], _with_entry_title(cache_data["cache"], entry))
+            connection.send_result(
+                msg["id"], _with_devices(hass, _with_entry_title(cache_data["cache"], entry))
+            )
             return
         cache_age = time.monotonic() - (cache_data.get("cache_time") or 0)
         if cache_age < cache_ttl:
-            connection.send_result(msg["id"], _with_entry_title(cache_data["cache"], entry))
+            connection.send_result(
+                msg["id"], _with_devices(hass, _with_entry_title(cache_data["cache"], entry))
+            )
             return
 
     backend = entry.options.get(CONF_BACKEND, entry.data.get(CONF_BACKEND))
@@ -150,7 +161,7 @@ async def ws_network_map(
         connection.send_error(msg["id"], "scan_failed", str(exc))
         return
 
-    connection.send_result(msg["id"], _with_entry_title(result, entry))
+    connection.send_result(msg["id"], _with_devices(hass, _with_entry_title(result, entry)))
 
 
 @websocket_api.websocket_command(
@@ -211,7 +222,7 @@ async def ws_history_get(
         connection.send_error(msg["id"], "not_found", "Snapshot not found")
         return
 
-    connection.send_result(msg["id"], result)
+    connection.send_result(msg["id"], _with_devices(hass, result))
 
 
 async def _run_scan(hass: HomeAssistant, entry: Any, backend: str) -> dict[str, Any]:
@@ -286,6 +297,9 @@ async def _run_scan(hass: HomeAssistant, entry: Any, backend: str) -> dict[str, 
         "max_depth": max_depth,
         "scan_duration_ms": scan_duration_ms,
         "backend": backend,
+        "node_ieees": sorted(nodes),
+        "warn_lqi": warn_lqi,
+        "critical_lqi": critical_lqi,
         "mqtt_topic": _get_mqtt_topic(entry) if backend == BACKEND_Z2M else None,
         "scan_timestamp": datetime.now(UTC).isoformat(),
     }
@@ -386,6 +400,77 @@ def _get_config_entry(hass: HomeAssistant, entry_id: str | None = None):
 def _with_entry_title(result: dict[str, Any], entry: Any) -> dict[str, Any]:
     """Add the current entry name to a response (not cached, so renames apply at once)."""
     return {**result, "entry_title": entry.title}
+
+
+def _ieee_key(ieee: str) -> str:
+    """Return an address in one comparable form: lowercase, no 0x, colons or dashes."""
+    key = ieee.lower().replace(":", "").replace("-", "")
+    return key[2:] if key.startswith("0x") else key
+
+
+def _registry_ieee(backend: str | None, domain: str, identifier: str) -> str | None:
+    """Return the address key for a device registry identifier of this backend, else None."""
+    if backend == BACKEND_Z2M and domain == "mqtt":
+        for prefix in _Z2M_ID_PREFIXES:
+            if identifier.startswith(prefix):
+                rest = identifier[len(prefix) :]
+                if not rest.startswith("0x"):
+                    return None  # group or other non-device entry
+                key = _ieee_key(rest)
+                return key if _IEEE_KEY_RE.fullmatch(key) else None
+        return None
+    if backend == BACKEND_ZHA and domain == "zha":
+        key = _ieee_key(identifier)
+        return key if _IEEE_KEY_RE.fullmatch(key) else None
+    return None
+
+
+def _device_ids(hass: HomeAssistant, backend: str | None, node_ieees: list[str]) -> dict[str, str]:
+    """Map each node address on the map to its Home Assistant device id.
+
+    Only devices on the map are included. Addresses that match more than one
+    device are left out.
+    """
+    wanted = {_ieee_key(ieee): ieee for ieee in node_ieees}
+    found: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for device in dr.async_get(hass).devices.values():
+        for domain, identifier in device.identifiers:
+            key = _registry_ieee(backend, domain, identifier)
+            if key is None or key not in wanted:
+                continue
+            ieee = wanted[key]
+            if ieee in found and found[ieee] != device.id:
+                ambiguous.add(ieee)
+            found[ieee] = device.id
+    return {ieee: device_id for ieee, device_id in found.items() if ieee not in ambiguous}
+
+
+def _device_details(hass: HomeAssistant, devices: dict[str, str]) -> dict[str, dict[str, str]]:
+    """Return manufacturer and model per node address, only for matched devices.
+
+    The values are untrusted text (they can come from MQTT), so they are cut short.
+    """
+    registry = dr.async_get(hass)
+    details: dict[str, dict[str, str]] = {}
+    for ieee, device_id in devices.items():
+        device = registry.async_get(device_id)
+        if device is None:
+            continue
+        info: dict[str, str] = {}
+        for field in ("manufacturer", "model"):
+            value = getattr(device, field, None)
+            if isinstance(value, str) and value.strip():
+                info[field] = value.strip()[:_DETAIL_MAX_LEN]
+        if info:
+            details[ieee] = info
+    return details
+
+
+def _with_devices(hass: HomeAssistant, result: dict[str, Any]) -> dict[str, Any]:
+    """Add the device tables to a response. Resolved per request, never stored."""
+    devices = _device_ids(hass, result.get("backend"), result.get("node_ieees") or [])
+    return {**result, "devices": devices, "device_details": _device_details(hass, devices)}
 
 
 def _get_mqtt_topic(entry: Any) -> str:

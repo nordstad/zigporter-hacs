@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,21 +25,49 @@ from custom_components.zigporter.const import (
     DOMAIN,
 )
 from custom_components.zigporter.websocket_api import (
+    _device_ids,
     _fetch_z2m_topology,
     _fetch_zha_topology,
     _get_config_entry,
     _history_dir,
+    _ieee_key,
     _list_history,
     _read_history_snapshot,
+    _registry_ieee,
     _run_scan,
     _save_cache,
     _save_history_snapshot,
+    _with_devices,
     async_register_websocket_commands,
     ws_history_get,
     ws_history_list,
     ws_network_map,
     ws_scan_status,
 )
+
+
+def _registry(*devices):
+    """Fake device registry: devices are (device_id, {(domain, identifier), ...}[, extra])."""
+    reg = MagicMock()
+    reg.devices = {
+        dev[0]: SimpleNamespace(id=dev[0], identifiers=dev[1], **(dev[2] if len(dev) > 2 else {}))
+        for dev in devices
+    }
+    reg.async_get = reg.devices.get
+    return reg
+
+
+def _patch_registry(*devices):
+    return patch(
+        "custom_components.zigporter.websocket_api.dr.async_get",
+        return_value=_registry(*devices),
+    )
+
+
+@pytest.fixture(autouse=True)
+def empty_registry():
+    with _patch_registry():
+        yield
 
 
 @pytest.fixture
@@ -211,7 +240,7 @@ class TestWsNetworkMap:
         await ws_network_map(mock_hass, mock_connection, msg)
 
         mock_connection.send_result.assert_called_once_with(
-            1, {**cached, "entry_title": "Zigporter"}
+            1, {**cached, "entry_title": "Zigporter", "devices": {}, "device_details": {}}
         )
 
     async def test_serves_cache_when_ttl_not_expired(self, mock_hass, mock_entry, mock_connection):
@@ -227,7 +256,7 @@ class TestWsNetworkMap:
         await ws_network_map(mock_hass, mock_connection, msg)
 
         mock_connection.send_result.assert_called_once_with(
-            1, {**cached, "entry_title": "Zigporter"}
+            1, {**cached, "entry_title": "Zigporter", "devices": {}, "device_details": {}}
         )
 
     async def test_does_not_serve_expired_cache(self, mock_hass, mock_entry, mock_connection):
@@ -248,7 +277,7 @@ class TestWsNetworkMap:
             await ws_network_map(mock_hass, mock_connection, msg)
 
         mock_connection.send_result.assert_called_once_with(
-            1, {**scan_result, "entry_title": "Zigporter"}
+            1, {**scan_result, "entry_title": "Zigporter", "devices": {}, "device_details": {}}
         )
 
     async def test_error_when_no_backend(self, mock_hass, mock_entry, mock_connection):
@@ -278,7 +307,7 @@ class TestWsNetworkMap:
         await ws_network_map(mock_hass, mock_connection, msg)
 
         mock_connection.send_result.assert_called_once_with(
-            1, {**scan_result, "entry_title": "Zigporter"}
+            1, {**scan_result, "entry_title": "Zigporter", "devices": {}, "device_details": {}}
         )
 
     async def test_scan_failure_sends_error(self, mock_hass, mock_entry, mock_connection):
@@ -628,7 +657,9 @@ class TestWsHistoryGet:
 
         await ws_history_get(mock_hass, mock_connection, msg)
 
-        mock_connection.send_result.assert_called_once_with(1, snapshot)
+        mock_connection.send_result.assert_called_once_with(
+            1, {**snapshot, "devices": {}, "device_details": {}}
+        )
 
 
 class TestFetchZ2mTopology:
@@ -1148,3 +1179,229 @@ class TestFetchZ2mDeviceLqiFallback:
         assert set(nodes) == {"0x001", "0x003"}
         assert links[0]["lqi"] == 0
         assert "lqi_source" not in links[0]
+
+
+A = "a" * 32
+B = "b" * 32
+Z2M_ADDR = "0x00124b0001abcdef"
+ZHA_ADDR = "00124b0001abcdef"
+
+
+def test_ieee_key_normalizes_formats():
+    for form in ("0x00124B0001ABCDEF", "00:12:4b:00:01:ab:cd:ef", "00124b0001abcdef"):
+        assert _ieee_key(form) == "00124b0001abcdef"
+
+
+def test_registry_ieee_z2m_device():
+    key = _registry_ieee(BACKEND_Z2M, "mqtt", "zigbee2mqtt_0x00124b0001abcdef")
+    assert key == "00124b0001abcdef"
+
+
+def test_registry_ieee_z2m_bridge():
+    key = _registry_ieee(BACKEND_Z2M, "mqtt", "zigbee2mqtt_bridge_0x00124b0001abcdef")
+    assert key == "00124b0001abcdef"
+
+
+def test_registry_ieee_z2m_group_ignored():
+    assert _registry_ieee(BACKEND_Z2M, "mqtt", "zigbee2mqtt_zigbee2mqtt_5") is None
+
+
+def test_registry_ieee_z2m_bad_address_ignored():
+    assert _registry_ieee(BACKEND_Z2M, "mqtt", "zigbee2mqtt_0xnothex") is None
+
+
+def test_registry_ieee_zha_device():
+    assert _registry_ieee(BACKEND_ZHA, "zha", "00:12:4b:00:01:ab:cd:ef") == "00124b0001abcdef"
+
+
+def test_registry_ieee_zha_bad_address_ignored():
+    assert _registry_ieee(BACKEND_ZHA, "zha", "group-1") is None
+
+
+def test_registry_ieee_wrong_backend_ignored():
+    assert _registry_ieee(BACKEND_Z2M, "zha", "00:12:4b:00:01:ab:cd:ef") is None
+    assert _registry_ieee(BACKEND_ZHA, "mqtt", "zigbee2mqtt_0x00124b0001abcdef") is None
+    assert _registry_ieee(BACKEND_Z2M, "mqtt", "other_0x00124b0001abcdef") is None
+
+
+def test_device_ids_z2m_match():
+    with _patch_registry((A, {("mqtt", "zigbee2mqtt_0x00124b0001abcdef")})):
+        assert _device_ids(MagicMock(), BACKEND_Z2M, [Z2M_ADDR]) == {Z2M_ADDR: A}
+
+
+def test_device_ids_zha_match():
+    with _patch_registry((A, {("zha", "00:12:4b:00:01:ab:cd:ef")})):
+        assert _device_ids(MagicMock(), BACKEND_ZHA, [ZHA_ADDR]) == {ZHA_ADDR: A}
+
+
+def test_device_ids_ignores_stale_zha_for_z2m_map():
+    with _patch_registry(
+        (A, {("mqtt", "zigbee2mqtt_0x00124b0001abcdef")}),
+        (B, {("zha", "00:12:4b:00:01:ab:cd:ef")}),
+    ):
+        assert _device_ids(MagicMock(), BACKEND_Z2M, [Z2M_ADDR]) == {Z2M_ADDR: A}
+
+
+def test_device_ids_only_includes_devices_on_map():
+    with _patch_registry(
+        (A, {("mqtt", "zigbee2mqtt_0x00124b0001abcdef")}),
+        (B, {("mqtt", "zigbee2mqtt_0x00124b0002aaaaaa")}),
+    ):
+        assert _device_ids(MagicMock(), BACKEND_Z2M, [Z2M_ADDR]) == {Z2M_ADDR: A}
+
+
+def test_device_ids_drops_ambiguous():
+    with _patch_registry(
+        (A, {("mqtt", "zigbee2mqtt_0x00124b0001abcdef")}),
+        (B, {("mqtt", "zigbee2mqtt_0x00124b0001abcdef")}),
+    ):
+        assert _device_ids(MagicMock(), BACKEND_Z2M, [Z2M_ADDR]) == {}
+
+
+def test_device_ids_same_device_twice_kept():
+    with _patch_registry(
+        (
+            A,
+            {
+                ("mqtt", "zigbee2mqtt_0x00124b0001abcdef"),
+                ("mqtt", "zigbee2mqtt_bridge_0x00124b0001abcdef"),
+            },
+        )
+    ):
+        assert _device_ids(MagicMock(), BACKEND_Z2M, [Z2M_ADDR]) == {Z2M_ADDR: A}
+
+
+def test_with_devices_adds_table_without_mutating():
+    result = {"backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]}
+    with _patch_registry((A, {("mqtt", "zigbee2mqtt_0x00124b0001abcdef")})):
+        out = _with_devices(MagicMock(), result)
+    assert "devices" not in result
+    assert out["devices"] == {Z2M_ADDR: A}
+
+
+def test_with_devices_old_result_without_node_ieees():
+    assert _with_devices(MagicMock(), {"backend": BACKEND_Z2M})["devices"] == {}
+
+
+class TestDeviceLinksInResponses:
+    async def test_network_map_response_includes_devices(
+        self, mock_hass, mock_entry, mock_connection
+    ):
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+        cached = {"svg": "<svg/>", "backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]}
+        mock_hass.data[DOMAIN][mock_entry.entry_id] = {
+            "cache": cached,
+            "cache_time": time.monotonic(),
+        }
+        msg = {"id": 1, "type": "zigporter/network_map", "force_refresh": False}
+
+        with _patch_registry((A, {("mqtt", "zigbee2mqtt_0x00124b0001abcdef")})):
+            await ws_network_map(mock_hass, mock_connection, msg)
+
+        sent = mock_connection.send_result.call_args.args[1]
+        assert sent["devices"] == {Z2M_ADDR: A}
+        assert "devices" not in mock_hass.data[DOMAIN][mock_entry.entry_id]["cache"]
+
+    async def test_history_get_response_includes_devices(
+        self, mock_hass, mock_entry, mock_connection
+    ):
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+        mock_hass.data[DOMAIN][mock_entry.entry_id] = {"cache_path": "/tmp/x/cache.json"}
+        snapshot = {"id": "123", "backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]}
+        mock_hass.async_add_executor_job = AsyncMock(return_value=snapshot)
+        msg = {"id": 1, "type": "zigporter/history_get", "snapshot_id": "123"}
+
+        with _patch_registry((A, {("mqtt", "zigbee2mqtt_0x00124b0001abcdef")})):
+            await ws_history_get(mock_hass, mock_connection, msg)
+
+        assert mock_connection.send_result.call_args.args[1]["devices"] == {Z2M_ADDR: A}
+        assert "devices" not in snapshot
+
+    async def test_run_scan_saves_node_ieees(self, mock_hass, mock_entry, tmp_path):
+        cache_path = str(tmp_path / "cache.json")
+        mock_hass.data[DOMAIN][mock_entry.entry_id] = {"cache_path": cache_path}
+        mock_hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
+        topology = (
+            {
+                "0x002": {"ieeeAddr": "0x002", "friendlyName": "Router1", "type": "Router"},
+                "0x001": {"ieeeAddr": "0x001", "friendlyName": "Coord", "type": "Coordinator"},
+            },
+            [
+                {"source": {"ieeeAddr": "0x002"}, "target": {"ieeeAddr": "0x001"}, "lqi": 200},
+                {"source": {"ieeeAddr": "0x001"}, "target": {"ieeeAddr": "0x002"}, "lqi": 180},
+            ],
+        )
+
+        with patch(
+            "custom_components.zigporter.websocket_api._fetch_z2m_topology",
+            new_callable=AsyncMock,
+            return_value=topology,
+        ):
+            result = await _run_scan(mock_hass, mock_entry, BACKEND_Z2M)
+
+        assert result["node_ieees"] == ["0x001", "0x002"]
+        assert (result["warn_lqi"], result["critical_lqi"]) == (50, 20)
+        assert "devices" not in result
+        saved = json.loads(Path(cache_path).read_text())
+        assert saved["node_ieees"] == ["0x001", "0x002"]
+        assert "devices" not in saved
+        for f in (tmp_path / "history").glob("*.json"):
+            assert "devices" not in json.loads(f.read_text())
+
+
+Z2M_ID = {("mqtt", "zigbee2mqtt_0x00124b0001abcdef")}
+
+
+def test_device_details_returns_manufacturer_and_model():
+    with _patch_registry((A, Z2M_ID, {"manufacturer": " IKEA ", "model": "TRADFRI"})):
+        out = _with_devices(MagicMock(), {"backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]})
+    assert out["device_details"] == {Z2M_ADDR: {"manufacturer": "IKEA", "model": "TRADFRI"}}
+
+
+def test_device_details_skips_empty_and_non_string_values():
+    extra = {"manufacturer": "  ", "model": 5}
+    with _patch_registry((A, Z2M_ID, extra)):
+        out = _with_devices(MagicMock(), {"backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]})
+    assert out["device_details"] == {}
+
+
+def test_device_details_keeps_one_field_when_other_missing():
+    with _patch_registry((A, Z2M_ID, {"model": "TRADFRI"})):
+        out = _with_devices(MagicMock(), {"backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]})
+    assert out["device_details"] == {Z2M_ADDR: {"model": "TRADFRI"}}
+
+
+def test_device_details_are_cut_to_100_characters():
+    with _patch_registry((A, Z2M_ID, {"manufacturer": "x" * 500})):
+        out = _with_devices(MagicMock(), {"backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]})
+    assert out["device_details"][Z2M_ADDR]["manufacturer"] == "x" * 100
+
+
+def test_device_details_skip_device_missing_from_registry():
+    reg = _registry((A, Z2M_ID, {"model": "TRADFRI"}))
+    reg.async_get = lambda device_id: None
+    with patch("custom_components.zigporter.websocket_api.dr.async_get", return_value=reg):
+        out = _with_devices(MagicMock(), {"backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]})
+    assert out["devices"] == {Z2M_ADDR: A}
+    assert out["device_details"] == {}
+
+
+def test_device_details_only_for_devices_on_the_map():
+    other = {("mqtt", "zigbee2mqtt_0x00124b0002aaaaaa")}
+    with _patch_registry((A, Z2M_ID, {"model": "one"}), (B, other, {"model": "two"})):
+        out = _with_devices(MagicMock(), {"backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]})
+    assert list(out["device_details"]) == [Z2M_ADDR]
+
+
+async def test_device_details_are_never_stored(mock_hass, mock_entry, mock_connection):
+    mock_hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+    cached = {"svg": "<svg/>", "backend": BACKEND_Z2M, "node_ieees": [Z2M_ADDR]}
+    mock_hass.data[DOMAIN][mock_entry.entry_id] = {"cache": cached, "cache_time": time.monotonic()}
+    msg = {"id": 1, "type": "zigporter/network_map", "force_refresh": False}
+
+    with _patch_registry((A, Z2M_ID, {"model": "TRADFRI"})):
+        await ws_network_map(mock_hass, mock_connection, msg)
+
+    sent = mock_connection.send_result.call_args.args[1]
+    assert sent["device_details"] == {Z2M_ADDR: {"model": "TRADFRI"}}
+    assert "device_details" not in mock_hass.data[DOMAIN][mock_entry.entry_id]["cache"]
