@@ -486,3 +486,62 @@ class TestMeshLinks:
         mesh_lines = mesh_g.findall("{http://www.w3.org/2000/svg}line")
         assert len(mesh_lines) == 1
         assert mesh_g.find("{http://www.w3.org/2000/svg}text").text == "120"
+
+
+SVG_NS = "{http://www.w3.org/2000/svg}"
+
+
+def _render(nodes, links):
+    parent_map, lqi_map, depth_map = build_routing_tree(nodes, links)
+    return render_svg(nodes=nodes, parent_map=parent_map, lqi_map=lqi_map, depth_map=depth_map)
+
+
+def _circle_by_name(svg, name):
+    root = ET.fromstring(svg)
+    for c in root.findall(f".//{SVG_NS}circle[@data-name]"):
+        if c.get("data-name") == name:
+            return c
+    raise AssertionError(f"no circle named {name!r}")
+
+
+def test_node_circles_have_ieee_and_type(sample_z2m_nodes, sample_z2m_links):
+    svg = _render(sample_z2m_nodes, sample_z2m_links)
+    circles = ET.fromstring(svg).findall(f".//{SVG_NS}circle[@data-name]")
+    assert len(circles) == len(sample_z2m_nodes)
+    for c in circles:
+        assert c.get("data-ieee") in sample_z2m_nodes
+        assert c.get("data-type") == sample_z2m_nodes[c.get("data-ieee")]["type"]
+
+
+def test_non_coordinator_circles_have_lqi_depth_parent(sample_z2m_nodes, sample_z2m_links):
+    c = _circle_by_name(_render(sample_z2m_nodes, sample_z2m_links), "Bedroom Sensor")
+    assert c.get("data-parent") == "Living Room Router"
+    assert c.get("data-depth") == "2"
+    assert c.get("data-lqi").isdigit()
+
+
+def test_coordinator_circle_has_no_lqi_depth_parent(sample_z2m_nodes, sample_z2m_links):
+    c = _circle_by_name(_render(sample_z2m_nodes, sample_z2m_links), "Coordinator")
+    assert c.get("data-type") == "Coordinator"
+    for attr in ("data-lqi", "data-depth", "data-parent"):
+        assert c.get(attr) is None
+
+
+def test_node_attributes_escape_markup(sample_z2m_nodes, sample_z2m_links):
+    evil = "<img src=x onerror=alert(1)>\"'&"
+    sample_z2m_nodes["0x00124b0002aaaaaa"]["friendlyName"] = evil
+    svg = _render(sample_z2m_nodes, sample_z2m_links)
+    assert "<img" not in svg
+    assert _circle_by_name(svg, evil).get("data-name") == evil
+    assert _circle_by_name(svg, "Bedroom Sensor").get("data-parent") == evil
+
+
+def test_last_seen_attribute_only_when_known(sample_z2m_nodes, sample_z2m_links):
+    sample_z2m_nodes["0x00124b0004cccccc"]["last_seen"] = "2026-01-01T12:00:00+00:00"
+    sample_z2m_nodes["0x00124b0001abcdef"]["last_seen"] = "2026-01-01T12:00:00+00:00"
+    svg = _render(sample_z2m_nodes, sample_z2m_links)
+    assert _circle_by_name(svg, "Bedroom Sensor").get("data-last-seen") == (
+        "2026-01-01T12:00:00+00:00"
+    )
+    assert _circle_by_name(svg, "Living Room Router").get("data-last-seen") is None
+    assert _circle_by_name(svg, "Coordinator").get("data-last-seen") is None
